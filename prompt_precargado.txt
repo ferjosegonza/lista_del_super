@@ -124,7 +124,7 @@ function verificarLogin(email) {
   if (!hoja) {
     hoja = ss.insertSheet(HOJAS.USUARIOS_PERMITIDOS);
     hoja.appendRow(["Email", "Nombre", "Rol", "FechaAlta"]);
-    hoja.appendRow(["TU_EMAIL_AQUI@gmail.com", "Administrador", "admin", new Date().toISOString()]);
+    hoja.appendRow(["fer.jose.gonza@gmail.com", "Administrador", "admin", new Date().toISOString()]);
   }
 
   const datos = hoja.getDataRange().getValues();
