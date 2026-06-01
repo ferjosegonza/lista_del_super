@@ -445,29 +445,3 @@ document.addEventListener('DOMContentLoaded', async () => {
         modal.addEventListener('click', (e) => { if (e.target === modal) modal.classList.remove('active'); });
     }
 });
-
-// Estilos adicionales
-const style = document.createElement('style');
-style.textContent = `
-    .input-container { display: flex; gap: 0.5rem; flex-wrap: wrap; }
-    .input-container input { flex: 1; min-width: 80px; }
-    .section-header { display: flex; justify-content: space-between; align-items: center; margin: 1rem 0 0.5rem 0; padding-bottom: 0.25rem; border-bottom: 2px solid var(--light); }
-    .section-header h3 { font-size: 1rem; font-weight: 600; color: var(--dark); margin: 0; }
-    .badge { background: var(--gray); color: white; border-radius: 20px; padding: 0.125rem 0.5rem; font-size: 0.7rem; margin-left: 0.5rem; }
-    .badge-warning { background: var(--warning); color: white; }
-    .chango-header { border-bottom-color: var(--warning); }
-    .chango-list li { background: #fff8e7; border-left: 3px solid var(--warning); }
-    .item-info { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.375rem; }
-    .item-cantidad { font-size: 0.8rem; color: var(--gray); }
-    .item-total { font-size: 0.75rem; color: var(--success); font-weight: bold; }
-    .item-sin-precio { font-size: 0.7rem; color: var(--gray); font-style: italic; }
-    .empty-message { text-align: center; color: var(--gray); padding: 0.75rem !important; font-size: 0.8rem; }
-    .btn-chango { background: var(--warning); color: white; }
-    .btn-chango-active { background: var(--success); color: white; }
-    .btn-chango-active:hover { background: #0e9f6e; }
-    .btn-warning { background: var(--warning); color: white; }
-    .btn-warning:hover { background: #e67e22; }
-    .form-actions { display: flex; gap: 0.5rem; justify-content: flex-end; }
-    @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
-`;
-document.head.appendChild(style);
