@@ -1,0 +1,1433 @@
+# 📦 Contexto del proyecto
+
+## 📁 Archivos incluidos
+
+- backend\Codigo.gs
+- config.js
+- index.html
+- script.js
+- style.css
+
+---
+## 🎯 Objetivo
+Quiero que:
+1. Tengas en cuenta todos los cambios necesarios en todos los archivos del proyecto y no me des ejemplos sino todo el código completo que necesito modificar, no es necesario que me devuelvas todos los códigos completos pero sí el código completo de lo que es nuevo y me especifiqués bien a qué archivo copiarselo, qué parte reemplaza, qué código borrar, no dejes cabos sueltos. Tu explicación debe ser detallada y permitir la implementación completa de todo lo que te pido.
+2. ya actualicé "Codigo.gs" dime si ves que realmente ahora está en DOMINIOS_PERMITIDOS el link de github pages, sigo sin poder ingresar desde el celular, sólo desde la notebook y no puedo ver la consola del celu porque no tengo conectado el celu a la pc sólo veo "Error de conexión" dentro de la función function callGASOnce(accion, datos, token)
+---
+## 🧠 Código fuente de los archivos mencionados
+
+### 📄 backend\Codigo.gs
+
+```
+// =====================================================
+// LISTA DE COMPRAS - BACKEND (Google Apps Script)
+// =====================================================
+// CONFIGURACIÓN INICIAL:
+// 1. Ve a https://script.google.com/create
+// 2. Pega este código
+// 3. Haz clic en "Desplegar" → "Nuevo despliegue"
+// 4. Tipo: "Aplicación web"
+// 5. Ejecutar como: "Yo" (tu cuenta)
+// 6. Quién tiene acceso: "Cualquiera" (incluso anónimo)
+// 7. Copia la URL que te da (ej: https://script.google.com/macros/s/.../exec)
+// =====================================================
+
+// Configuración de seguridad - SOLO PERMITIR ESTOS DOMINIOS
+const DOMINIOS_PERMITIDOS = [
+  "https://ferjosegonza.github.io/lista_del_super/",
+  "http://localhost:5500/",
+  "http://localhost:80/",
+  "http://localhost/",
+  "http://127.0.0.1:5500/"
+];
+
+// ID del Google Sheet (CREA UNO NUEVO Y PON SU ID AQUÍ)
+const SPREADSHEET_ID = "1uVYuQlPyybXWO3wEhjMUdCbQpTJfwhmIahb0ox6kY-c";
+
+// Nombres de las hojas
+const HOJAS = {
+  ITEMS: "Items",
+  USUARIOS_PERMITIDOS: "UsuariosPermitidos",
+  REGISTRO_SESIONES: "RegistroSesiones"
+};
+
+// =====================================================
+// FUNCIÓN PRINCIPAL (JSONP para evitar CORS)
+// =====================================================
+function doGet(e) {
+  return manejarPeticionJSONP(e);
+}
+
+function manejarPeticionJSONP(e) {
+  const origen = e?.parameter?.origin || "";
+  const referer = e?.parameter?.referer || "";
+  const callback = e?.parameter?.callback || "callback";
+
+  if (!esDominioPermitido(origen, referer)) {
+    return jsonpResponse(callback, { success: false, error: "Dominio no autorizado" });
+  }
+
+  const accion = e?.parameter?.accion || "";
+  const token = e?.parameter?.token || "";
+  let datos = {};
+  try {
+    datos = e?.parameter?.datos ? JSON.parse(e.parameter.datos) : {};
+  } catch (parseError) {
+    return jsonpResponse(callback, { success: false, error: "Datos inválidos" });
+  }
+
+  const resultado = ejecutarAccion(accion, token, datos);
+  return jsonpResponse(callback, resultado);
+}
+
+function jsonpResponse(callback, resultado) {
+  return ContentService
+    .createTextOutput(`${callback}(${JSON.stringify(resultado)})`)
+    .setMimeType(ContentService.MimeType.JAVASCRIPT);
+}
+
+function esDominioPermitido(origen, referer) {
+  const normalizar = (url) => {
+    if (!url) return "";
+    // Eliminar puertos comunes (5500, 80, etc.) para comparar limpiamente
+    let limpia = url.replace(/:\d+/, "");
+    return limpia.replace(/\/+$/, "");
+  };
+
+  const o = normalizar(origen);
+  const r = normalizar(referer);
+
+  // Permitir localhost para pruebas
+  if (o.includes("localhost") || r.includes("localhost") ||
+      o.includes("127.0.0.1") || r.includes("127.0.0.1")) {
+    return true;
+  }
+
+  // Verificar contra lista blanca
+  for (let dominio of DOMINIOS_PERMITIDOS) {
+    const dominioLimpio = normalizar(dominio);
+    if (o.startsWith(dominioLimpio) || r.startsWith(dominioLimpio)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+// =====================================================
+// AUTENTICACIÓN (LISTA BLANCA)
+// =====================================================
+function verificarLogin(email) {
+  const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  let hoja = ss.getSheetByName(HOJAS.USUARIOS_PERMITIDOS);
+
+  if (!hoja) {
+    hoja = ss.insertSheet(HOJAS.USUARIOS_PERMITIDOS);
+    hoja.appendRow(["Email", "Nombre", "Rol", "FechaAlta"]);
+    hoja.appendRow(["TU_EMAIL_AQUI@gmail.com", "Administrador", "admin", new Date().toISOString()]);
+  }
+
+  const datos = hoja.getDataRange().getValues();
+  let usuarioEncontrado = null;
+
+  for (let i = 1; i < datos.length; i++) {
+    if (datos[i][0] === email) {
+      usuarioEncontrado = { email: datos[i][0], nombre: datos[i][1], rol: datos[i][2] };
+      break;
+    }
+  }
+
+  if (usuarioEncontrado) {
+    const token = generarToken(email);
+    registrarSesion(email, "login");
+    return { success: true, data: { token: token, usuario: usuarioEncontrado } };
+  }
+  return { success: false, error: "Email no autorizado" };
+}
+
+function generarToken(email) {
+  const payload = { email: email, expira: Date.now() + (24 * 60 * 60 * 1000) };
+  return Utilities.base64Encode(JSON.stringify(payload));
+}
+
+function validarToken(token) {
+  if (!token) return null;
+  try {
+    const decoded = Utilities.newBlob(Utilities.base64Decode(token)).getDataAsString();
+    const datos = JSON.parse(decoded);
+    if (datos.expira > Date.now()) return datos.email;
+  } catch (e) {}
+  return null;
+}
+
+function registrarSesion(email, accion) {
+  const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  let hoja = ss.getSheetByName(HOJAS.REGISTRO_SESIONES);
+  if (!hoja) {
+    hoja = ss.insertSheet(HOJAS.REGISTRO_SESIONES);
+    hoja.appendRow(["Fecha", "Email", "Acción"]);
+  }
+  hoja.appendRow([new Date().toISOString(), email, accion]);
+}
+
+// =====================================================
+// CRUD DE ÍTEMS DE COMPRA
+// =====================================================
+function obtenerItems() {
+  const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  let hoja = ss.getSheetByName(HOJAS.ITEMS);
+  if (!hoja) return [];
+
+  const datos = hoja.getDataRange().getValues();
+  const items = [];
+  for (let i = 1; i < datos.length; i++) {
+    if (datos[i][0]) {
+      items.push({
+        id: datos[i][0],
+        nombre: datos[i][1],
+        precio: datos[i][2],
+        comprado: datos[i][3] === true,
+        agregadoPor: datos[i][4],
+        fecha: datos[i][5]
+      });
+    }
+  }
+  // Ordenar alfabéticamente por nombre
+  items.sort((a, b) => a.nombre.localeCompare(b.nombre));
+  return items;
+}
+
+function agregarItem(item, emailUsuario) {
+  const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  let hoja = ss.getSheetByName(HOJAS.ITEMS);
+
+  if (!hoja) {
+    hoja = ss.insertSheet(HOJAS.ITEMS);
+    hoja.appendRow(["ID", "Nombre", "Precio", "Comprado", "AgregadoPor", "Fecha"]);
+  }
+
+  // Verificar si ya existe (case insensitive)
+  const datos = hoja.getDataRange().getValues();
+  for (let i = 1; i < datos.length; i++) {
+    if (datos[i][1] && datos[i][1].toLowerCase() === item.nombre.toLowerCase()) {
+      return { success: false, error: `El item "${item.nombre}" ya existe en la lista` };
+    }
+  }
+
+  const id = "ITEM-" + Date.now();
+  hoja.appendRow([
+    id,
+    item.nombre,
+    item.precio || 0,
+    false,
+    emailUsuario,
+    new Date().toISOString()
+  ]);
+
+  registrarSesion(emailUsuario, `agregar_item_${item.nombre}`);
+  return { success: true, id: id };
+}
+
+function toggleComprado(id, emailUsuario) {
+  const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  let hoja = ss.getSheetByName(HOJAS.ITEMS);
+  if (!hoja) return { success: false, error: "Hoja no encontrada" };
+
+  const datos = hoja.getDataRange().getValues();
+  let fila = -1;
+  let estadoActual = false;
+  let nombreItem = "";
+
+  for (let i = 1; i < datos.length; i++) {
+    if (datos[i][0] === id) {
+      fila = i + 1;
+      estadoActual = datos[i][3] === true;
+      nombreItem = datos[i][1];
+      break;
+    }
+  }
+
+  if (fila === -1) return { success: false, error: "Item no encontrado" };
+
+  hoja.getRange(fila, 4).setValue(!estadoActual);
+  registrarSesion(emailUsuario, `${!estadoActual ? "comprar" : "desmarcar"}_${nombreItem}`);
+  return { success: true, nuevoEstado: !estadoActual };
+}
+
+function eliminarItem(id, emailUsuario) {
+  const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  let hoja = ss.getSheetByName(HOJAS.ITEMS);
+  if (!hoja) return false;
+
+  const datos = hoja.getDataRange().getValues();
+  let nombreItem = "";
+  for (let i = 1; i < datos.length; i++) {
+    if (datos[i][0] === id) {
+      nombreItem = datos[i][1];
+      hoja.deleteRow(i + 1);
+      registrarSesion(emailUsuario, `eliminar_item_${nombreItem}`);
+      return true;
+    }
+  }
+  return false;
+}
+
+function actualizarPrecio(id, nuevoPrecio, emailUsuario) {
+  const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  let hoja = ss.getSheetByName(HOJAS.ITEMS);
+  if (!hoja) return { success: false, error: "Hoja no encontrada" };
+
+  const datos = hoja.getDataRange().getValues();
+  let fila = -1;
+  let nombreItem = "";
+
+  for (let i = 1; i < datos.length; i++) {
+    if (datos[i][0] === id) {
+      fila = i + 1;
+      nombreItem = datos[i][1];
+      break;
+    }
+  }
+
+  if (fila === -1) return { success: false, error: "Item no encontrado" };
+
+  hoja.getRange(fila, 3).setValue(nuevoPrecio);
+  registrarSesion(emailUsuario, `actualizar_precio_${nombreItem}_a_${nuevoPrecio}`);
+  return { success: true };
+}
+
+// =====================================================
+// INICIALIZACIÓN DE HOJAS
+// =====================================================
+function inicializarTodasLasHojas() {
+  const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  const hojas = {
+    Items: ["ID", "Nombre", "Precio", "Comprado", "AgregadoPor", "Fecha"],
+    UsuariosPermitidos: ["Email", "Nombre", "Rol", "FechaAlta"],
+    RegistroSesiones: ["Fecha", "Email", "Acción"]
+  };
+
+  for (const [nombreHoja, cabeceras] of Object.entries(hojas)) {
+    let hoja = ss.getSheetByName(nombreHoja);
+    if (!hoja) {
+      hoja = ss.insertSheet(nombreHoja);
+      hoja.getRange(1, 1, 1, cabeceras.length).setValues([cabeceras]);
+    } else if (hoja.getLastRow() === 0) {
+      hoja.getRange(1, 1, 1, cabeceras.length).setValues([cabeceras]);
+    }
+  }
+  Logger.log("Todas las hojas inicializadas");
+}
+
+// =====================================================
+// ROUTER
+// =====================================================
+function ejecutarAccion(accion, token, datos) {
+  if (accion === "login") {
+    return verificarLogin(datos.email);
+  }
+
+  const emailUsuario = validarToken(token);
+  if (!emailUsuario) {
+    return { success: false, error: "No autenticado" };
+  }
+
+  switch (accion) {
+    case "verificarSesion":
+      return { success: true, data: { email: emailUsuario } };
+    case "obtenerItems":
+      return { success: true, data: obtenerItems() };
+    case "agregarItem":
+      return agregarItem(datos, emailUsuario);
+    case "toggleComprado":
+      return toggleComprado(datos.id, emailUsuario);
+    case "eliminarItem":
+      return { success: true, data: eliminarItem(datos.id, emailUsuario) };
+    case "actualizarPrecio":
+      return actualizarPrecio(datos.id, datos.precio, emailUsuario);
+    default:
+      return { success: false, error: "Acción no válida" };
+  }
+}
+```
+
+### 📄 config.js
+
+```javascript
+const CONFIG = {
+    GAS_URL: "https://script.google.com/macros/s/AKfycbwSXSjz59A1hOmOb13Q6X1u4M9I0jGqq06H7eDRAuxHAAmzHD9uLnmlgdYzdophj-6SSw/exec",
+    SESSION_EXPIRATION: 24 * 60 * 60 * 1000
+};
+```
+
+### 📄 index.html
+
+```html
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>Lista de Compras</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <div id="loginScreen" class="login-screen">
+        <div class="login-card">
+            <div class="login-icon">🛒</div>
+            <h1>Lista de Compras</h1>
+            <p>Gestión colaborativa del supermercado</p>
+            <div class="login-divider"></div>
+            <div id="login-status" class="login-status"></div>
+            <form id="loginForm" class="login-form">
+                <div class="form-group">
+                    <label>✉️ Tu correo electrónico</label>
+                    <input type="email" id="loginEmail" placeholder="tucorreo@gmail.com" required autofocus>
+                </div>
+                <button type="submit" class="btn-primary btn-large">Ingresar</button>
+            </form>
+            <p class="login-note">Solo usuarios autorizados pueden acceder</p>
+        </div>
+    </div>
+
+
+    <div id="appScreen" class="app-container" style="display: none;">
+        <div class="app-header">
+            <h1>🛒 Lista de Compras</h1>
+            <div class="user-info">
+                <span id="userEmail"></span>
+                <button id="btnLogout" class="btn-logout-sm">🚪 Salir</button>
+            </div>
+        </div>
+
+        <div class="input-container">
+            <input type="text" id="item-input" placeholder="Nuevo ítem..." autocomplete="off">
+            <input type="number" id="price-input" placeholder="Precio $" step="0.01">
+            <button id="btnAgregar" class="btn-success">+ Agregar</button>
+        </div>
+
+        <div class="stats-bar">
+            <div class="stat-item">
+                <span class="stat-label">Total de ítems:</span>
+                <span id="totalItems" class="stat-value">0</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-label">Pendientes:</span>
+                <span id="pendientes" class="stat-value">0</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-label">Comprados:</span>
+                <span id="comprados" class="stat-value">0</span>
+            </div>
+            <div class="stat-item total">
+                <span class="stat-label">💰 Total acumulado:</span>
+                <span id="totalPrecio" class="stat-value total-value">$0.00</span>
+            </div>
+        </div>
+
+        <ul id="lista-compras" class="lista-compras"></ul>
+
+        <div class="action-bar">
+            <button id="btnDeshacer" class="btn-secondary" disabled>↩️ Deshacer última acción</button>
+            <button id="btnLimpiarComprados" class="btn-danger">🗑️ Limpiar comprados</button>
+        </div>
+    </div>
+
+    <script src="config.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>
+```
+
+### 📄 script.js
+
+```javascript
+let currentUser = null;
+let currentToken = null;
+let itemsCache = [];
+let historialAcciones = [];
+let timeoutIds = {};
+
+
+
+
+let requestSeq = 0;
+let requestChain = Promise.resolve();
+
+function callGAS(accion, datos = {}) {
+    const token = currentToken;
+    if (!token && accion !== 'login') {
+        return Promise.reject(new Error('No autenticado'));
+    }
+
+    const task = () => callGASOnce(accion, datos, token);
+    const result = requestChain.then(task, task);
+    requestChain = result.catch(() => {});
+    return result;
+}
+
+function callGASOnce(accion, datos, token) {
+    return new Promise((resolve, reject) => {
+        const callbackName = 'cb_' + (++requestSeq) + '_' + Date.now();
+        let settled = false;
+
+        const origin = window.location.origin === 'null' ? '' : window.location.origin;
+        const referer = window.location.href;
+
+        const url = new URL(CONFIG.GAS_URL);
+        url.searchParams.set('accion', accion);
+        url.searchParams.set('token', token || '');
+        url.searchParams.set('datos', JSON.stringify(datos));
+        url.searchParams.set('callback', callbackName);
+        url.searchParams.set('origin', origin);
+        url.searchParams.set('referer', referer);
+        url.searchParams.set('_nocache', Date.now());
+
+        const script = document.createElement('script');
+
+        const settle = (fn, value) => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(timeoutIds[callbackName]);
+            delete window[callbackName];
+            if (script.parentNode) script.parentNode.removeChild(script);
+            fn(value);
+        };
+
+        window[callbackName] = (resultado) => settle(resolve, resultado);
+
+        timeoutIds[callbackName] = setTimeout(() => {
+            settle(reject, new Error('Timeout: el backend no respondió'));
+        }, 30000);
+
+        script.onerror = () => settle(reject, new Error('Error de conexión'));
+        script.src = url.toString();
+        document.head.appendChild(script);
+    });
+}
+
+
+
+
+async function login(email) {
+    try {
+        const resultado = await callGAS('login', { email: email });
+        if (resultado.success && resultado.data?.token) {
+            currentToken = resultado.data.token;
+            currentUser = email;
+            localStorage.setItem('listToken', currentToken);
+            localStorage.setItem('listUser', currentUser);
+            return true;
+        } else {
+            throw new Error(resultado.error || 'Email no autorizado');
+        }
+    } catch (error) {
+        throw error;
+    }
+}
+
+async function checkAuth() {
+    const token = localStorage.getItem('listToken');
+    const user = localStorage.getItem('listUser');
+
+    if (!token || !user) return false;
+
+    try {
+        const result = await callGAS('verificarSesion', {});
+        if (result.success && result.data.email === user) {
+            currentToken = token;
+            currentUser = user;
+            return true;
+        }
+    } catch (e) {
+        console.error('Auth error:', e);
+    }
+    return false;
+}
+
+function logout() {
+    localStorage.removeItem('listToken');
+    localStorage.removeItem('listUser');
+    currentToken = null;
+    currentUser = null;
+    showLoginScreen();
+}
+
+
+
+
+async function cargarItems() {
+    try {
+        const result = await callGAS('obtenerItems', {});
+        if (result.success) {
+            itemsCache = result.data;
+            renderizarItems();
+            return true;
+        }
+    } catch (error) {
+        console.error('Error cargando items:', error);
+        mostrarNotificacion('Error al cargar la lista', 'error');
+    }
+    return false;
+}
+
+function renderizarItems() {
+    const lista = document.getElementById('lista-compras');
+    if (!lista) return;
+
+    if (itemsCache.length === 0) {
+        lista.innerHTML = '<li class="text-muted" style="text-align:center; padding:2rem;">No hay ítems en la lista. ¡Agregá uno!</li>';
+        actualizarStats();
+        return;
+    }
+
+    lista.innerHTML = itemsCache.map(item => `
+        <li class="${item.comprado ? 'comprado' : ''}" data-id="${item.id}">
+            <div class="item-info">
+                <span class="item-nombre">${escapeHtml(item.nombre)}</span>
+                <span class="item-precio">$${Number(item.precio || 0).toFixed(2)}</span>
+                <span class="item-usuario">👤 ${escapeHtml(item.agregadoPor || '?')}</span>
+            </div>
+            <div class="item-actions">
+                <button class="btn-sm btn-comprar" onclick="toggleComprado('${item.id}')" ${item.comprado ? 'disabled' : ''}>
+                    ${item.comprado ? '✓ Comprado' : '🛒 Marcar'}
+                </button>
+                <button class="btn-sm btn-precio" onclick="editarPrecio('${item.id}', ${item.precio || 0})">
+                    💰 Precio
+                </button>
+                <button class="btn-sm btn-eliminar" onclick="eliminarItem('${item.id}')">
+                    🗑️
+                </button>
+            </div>
+        </li>
+    `).join('');
+
+    actualizarStats();
+}
+
+function actualizarStats() {
+    const totalItems = itemsCache.length;
+    const comprados = itemsCache.filter(i => i.comprado).length;
+    const pendientes = totalItems - comprados;
+    const totalPrecio = itemsCache.reduce((sum, i) => sum + (i.comprado ? (i.precio || 0) : 0), 0);
+
+    const totalItemsEl = document.getElementById('totalItems');
+    const pendientesEl = document.getElementById('pendientes');
+    const compradosEl = document.getElementById('comprados');
+    const totalPrecioEl = document.getElementById('totalPrecio');
+
+    if (totalItemsEl) totalItemsEl.innerText = totalItems;
+    if (pendientesEl) pendientesEl.innerText = pendientes;
+    if (compradosEl) compradosEl.innerText = comprados;
+    if (totalPrecioEl) totalPrecioEl.innerText = `$${totalPrecio.toFixed(2)}`;
+}
+
+async function agregarItem() {
+    const nombreInput = document.getElementById('item-input');
+    const precioInput = document.getElementById('price-input');
+    const nombre = nombreInput.value.trim();
+    const precio = parseFloat(precioInput.value) || 0;
+
+    if (!nombre) {
+        mostrarNotificacion('Ingrese un nombre para el ítem', 'error');
+        nombreInput.focus();
+        return;
+    }
+
+    if (precio < 0) {
+        mostrarNotificacion('El precio no puede ser negativo', 'error');
+        return;
+    }
+
+
+    guardarEnHistorial('agregar', null, { nombre, precio });
+
+    const loadingNotif = mostrarNotificacion('Agregando...', 'info', true);
+
+    try {
+        const result = await callGAS('agregarItem', { nombre, precio });
+        if (loadingNotif) loadingNotif.remove();
+
+        if (result.success) {
+            mostrarNotificacion(`"${nombre}" agregado correctamente`, 'success');
+            nombreInput.value = '';
+            precioInput.value = '';
+            nombreInput.focus();
+            await cargarItems();
+        } else {
+            mostrarNotificacion(`Error: ${result.error || 'No se pudo agregar'}`, 'error');
+        }
+    } catch (error) {
+        if (loadingNotif) loadingNotif.remove();
+        mostrarNotificacion(`Error: ${error.message}`, 'error');
+    }
+}
+
+async function toggleComprado(id) {
+    const item = itemsCache.find(i => i.id === id);
+    if (!item) return;
+
+
+    guardarEnHistorial('toggle', id, { comprado: item.comprado, precio: item.precio });
+
+    try {
+        const result = await callGAS('toggleComprado', { id });
+        if (result.success) {
+            await cargarItems();
+        } else {
+            mostrarNotificacion(`Error: ${result.error}`, 'error');
+        }
+    } catch (error) {
+        mostrarNotificacion(`Error: ${error.message}`, 'error');
+    }
+}
+
+async function eliminarItem(id) {
+    const item = itemsCache.find(i => i.id === id);
+    if (!item) return;
+
+    if (!confirm(`¿Eliminar "${item.nombre}" permanentemente?`)) return;
+
+
+    guardarEnHistorial('eliminar', id, item);
+
+    const loadingNotif = mostrarNotificacion('Eliminando...', 'info', true);
+
+    try {
+        const result = await callGAS('eliminarItem', { id });
+        if (loadingNotif) loadingNotif.remove();
+
+        if (result.success && result.data) {
+            mostrarNotificacion(`"${item.nombre}" eliminado`, 'success');
+            await cargarItems();
+        } else {
+            mostrarNotificacion(`Error: ${result.error || 'No se pudo eliminar'}`, 'error');
+        }
+    } catch (error) {
+        if (loadingNotif) loadingNotif.remove();
+        mostrarNotificacion(`Error: ${error.message}`, 'error');
+    }
+}
+
+async function editarPrecio(id, precioActual) {
+    const modal = document.getElementById('modal');
+    const modalTitle = document.getElementById('modalTitle');
+    const modalBody = document.getElementById('modalBody');
+
+    if (!modal || !modalTitle || !modalBody) return;
+
+    const item = itemsCache.find(i => i.id === id);
+    if (!item) return;
+
+    modalTitle.innerText = `💰 Editar precio - ${item.nombre}`;
+    modalBody.innerHTML = `
+        <form id="formEditarPrecio" class="form-grid">
+            <div class="form-group">
+                <label>Precio ($)</label>
+                <input type="number" id="editPrecio" value="${precioActual}" step="0.01" min="0" required>
+            </div>
+            <div class="form-actions">
+                <button type="submit" class="btn-success">💾 Guardar</button>
+                <button type="button" class="btn-secondary modal-close-btn">Cancelar</button>
+            </div>
+        </form>
+    `;
+
+    modal.classList.add('active');
+
+    const form = document.getElementById('formEditarPrecio');
+    const closeBtn = modalBody.querySelector('.modal-close-btn');
+    const modalClose = modal.querySelector('.modal-close');
+
+    const cerrarModal = () => modal.classList.remove('active');
+    if (closeBtn) closeBtn.onclick = cerrarModal;
+    if (modalClose) modalClose.onclick = cerrarModal;
+
+    form.onsubmit = async (e) => {
+        e.preventDefault();
+        const nuevoPrecio = parseFloat(document.getElementById('editPrecio').value) || 0;
+
+        if (nuevoPrecio < 0) {
+            mostrarNotificacion('El precio no puede ser negativo', 'error');
+            return;
+        }
+
+
+        guardarEnHistorial('precio', id, { precio: item.precio });
+
+        const loadingNotif = mostrarNotificacion('Actualizando precio...', 'info', true);
+
+        try {
+            const result = await callGAS('actualizarPrecio', { id, precio: nuevoPrecio });
+            if (loadingNotif) loadingNotif.remove();
+
+            if (result.success) {
+                mostrarNotificacion(`Precio actualizado a $${nuevoPrecio.toFixed(2)}`, 'success');
+                cerrarModal();
+                await cargarItems();
+            } else {
+                mostrarNotificacion(`Error: ${result.error}`, 'error');
+            }
+        } catch (error) {
+            if (loadingNotif) loadingNotif.remove();
+            mostrarNotificacion(`Error: ${error.message}`, 'error');
+        }
+    };
+}
+
+
+
+
+function guardarEnHistorial(tipo, id, datos) {
+    historialAcciones.push({ tipo, id, datos, timestamp: Date.now() });
+    actualizarBotonDeshacer();
+}
+
+async function deshacer() {
+    if (historialAcciones.length === 0) return;
+
+    const ultima = historialAcciones.pop();
+    actualizarBotonDeshacer();
+
+    switch (ultima.tipo) {
+        case 'agregar':
+
+            const itemAgregado = itemsCache.find(i => i.nombre === ultima.datos.nombre && i.precio === ultima.datos.precio);
+            if (itemAgregado) {
+                await callGAS('eliminarItem', { id: itemAgregado.id });
+                await cargarItems();
+                mostrarNotificacion('Se deshizo la adición', 'info');
+            }
+            break;
+        case 'eliminar':
+
+            await callGAS('agregarItem', { nombre: ultima.datos.nombre, precio: ultima.datos.precio });
+            await cargarItems();
+            mostrarNotificacion('Se deshizo la eliminación', 'info');
+            break;
+        case 'toggle':
+
+            await callGAS('toggleComprado', { id: ultima.id });
+            await cargarItems();
+            mostrarNotificacion('Se deshizo el cambio de estado', 'info');
+            break;
+        case 'precio':
+
+            await callGAS('actualizarPrecio', { id: ultima.id, precio: ultima.datos.precio });
+            await cargarItems();
+            mostrarNotificacion('Se deshizo el cambio de precio', 'info');
+            break;
+    }
+}
+
+function actualizarBotonDeshacer() {
+    const btn = document.getElementById('btnDeshacer');
+    if (btn) btn.disabled = historialAcciones.length === 0;
+}
+
+
+
+
+function mostrarNotificacion(mensaje, tipo = 'info', persistente = false) {
+    const notif = document.createElement('div');
+    const colores = { success: '#10b981', error: '#ef4444', info: '#4f46e5' };
+    notif.className = `notification notification-${tipo}`;
+    notif.innerText = mensaje;
+    notif.style.cssText = `
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        padding: 12px 20px;
+        background: ${colores[tipo] || '#4f46e5'};
+        color: white;
+        border-radius: 8px;
+        z-index: 2000;
+        animation: slideIn 0.3s ease;
+    `;
+    document.body.appendChild(notif);
+    if (!persistente) setTimeout(() => notif.remove(), 3000);
+    return notif;
+}
+
+function escapeHtml(text) {
+    if (!text) return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+async function limpiarComprados() {
+    const comprados = itemsCache.filter(i => i.comprado);
+    if (comprados.length === 0) {
+        mostrarNotificacion('No hay ítems comprados para limpiar', 'info');
+        return;
+    }
+
+    if (!confirm(`¿Eliminar los ${comprados.length} ítems marcados como comprados?`)) return;
+
+    let eliminados = 0;
+    for (const item of comprados) {
+        await callGAS('eliminarItem', { id: item.id });
+        eliminados++;
+    }
+    await cargarItems();
+    mostrarNotificacion(`${eliminados} ítems comprados eliminados`, 'success');
+}
+
+function showLoginScreen() {
+    document.getElementById('loginScreen').style.display = 'flex';
+    document.getElementById('appScreen').style.display = 'none';
+}
+
+function showAppScreen() {
+    document.getElementById('loginScreen').style.display = 'none';
+    document.getElementById('appScreen').style.display = 'block';
+}
+
+
+
+
+document.addEventListener('DOMContentLoaded', async () => {
+
+    const loginForm = document.getElementById('loginForm');
+    const statusDiv = document.getElementById('login-status');
+
+    loginForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const email = document.getElementById('loginEmail').value.trim().toLowerCase();
+
+        if (!email) {
+            statusDiv.innerHTML = '<div class="error">❌ Ingresá un email válido</div>';
+            return;
+        }
+
+        statusDiv.innerHTML = '<div>⏳ Verificando acceso...</div>';
+
+        try {
+            const exito = await login(email);
+            if (exito) {
+                document.getElementById('userEmail').innerText = email;
+                await cargarItems();
+                showAppScreen();
+                statusDiv.innerHTML = '';
+                historialAcciones = [];
+                actualizarBotonDeshacer();
+            } else {
+                statusDiv.innerHTML = '<div class="error">❌ Acceso denegado. Email no autorizado</div>';
+            }
+        } catch (error) {
+            statusDiv.innerHTML = `<div class="error">❌ ${error.message}</div>`;
+        }
+    });
+
+
+    const autenticado = await checkAuth();
+    if (autenticado) {
+        document.getElementById('userEmail').innerText = currentUser;
+        await cargarItems();
+        showAppScreen();
+    } else {
+        showLoginScreen();
+    }
+
+
+    document.getElementById('btnAgregar')?.addEventListener('click', agregarItem);
+    document.getElementById('item-input')?.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') agregarItem();
+    });
+    document.getElementById('price-input')?.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') agregarItem();
+    });
+    document.getElementById('btnLogout')?.addEventListener('click', () => {
+        logout();
+        showLoginScreen();
+    });
+    document.getElementById('btnDeshacer')?.addEventListener('click', deshacer);
+    document.getElementById('btnLimpiarComprados')?.addEventListener('click', limpiarComprados);
+
+
+    const modal = document.getElementById('modal');
+    if (modal) {
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) modal.classList.remove('active');
+        });
+    }
+});
+```
+
+### 📄 style.css
+
+```css
+:root {
+    --primary: #4f46e5;
+    --primary-dark: #4338ca;
+    --success: #10b981;
+    --danger: #ef4444;
+    --warning: #f59e0b;
+    --dark: #1f2937;
+    --gray: #6b7280;
+    --light: #f3f4f6;
+    --white: #ffffff;
+    --shadow: 0 1px 3px rgba(0,0,0,0.1);
+    --shadow-lg: 0 10px 25px -5px rgba(0,0,0,0.1);
+    --radius: 12px;
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    background: var(--light);
+    min-height: 100vh;
+}
+
+
+.login-screen {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}
+
+.login-card {
+    max-width: 450px;
+    width: 90%;
+    margin: 0 auto;
+    background: var(--white);
+    border-radius: var(--radius);
+    padding: 2rem;
+    text-align: center;
+    box-shadow: var(--shadow-lg);
+}
+
+.login-icon {
+    font-size: 4rem;
+    margin-bottom: 1rem;
+}
+
+.login-card h1 {
+    font-size: 1.8rem;
+    margin-bottom: 0.5rem;
+    color: var(--dark);
+}
+
+.login-card p {
+    color: var(--gray);
+    margin-bottom: 1rem;
+}
+
+.login-divider {
+    height: 1px;
+    background: var(--light);
+    margin: 1.5rem 0;
+}
+
+.login-form {
+    margin: 1rem 0;
+}
+
+.login-form .form-group {
+    margin-bottom: 1rem;
+    text-align: left;
+}
+
+.login-form input {
+    width: 100%;
+    padding: 0.75rem;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    font-size: 1rem;
+}
+
+.login-status {
+    margin-bottom: 1rem;
+    padding: 0.75rem;
+    border-radius: 8px;
+    font-size: 0.875rem;
+}
+
+.login-status.error {
+    background: #fee2e2;
+    color: var(--danger);
+}
+
+.login-note {
+    margin-top: 1.5rem;
+    font-size: 0.75rem;
+    color: var(--gray);
+}
+
+
+.app-container {
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 1rem;
+}
+
+.app-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid var(--light);
+}
+
+.app-header h1 {
+    font-size: 1.5rem;
+    color: var(--dark);
+}
+
+.user-info {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    font-size: 0.875rem;
+    color: var(--gray);
+}
+
+.btn-logout-sm {
+    background: none;
+    border: 1px solid var(--light);
+    border-radius: 6px;
+    padding: 0.25rem 0.75rem;
+    cursor: pointer;
+    color: var(--danger);
+    font-size: 0.75rem;
+}
+
+.btn-logout-sm:hover {
+    background: #fee2e2;
+}
+
+
+.input-container {
+    display: flex;
+    gap: 0.75rem;
+    margin-bottom: 1.5rem;
+    flex-wrap: wrap;
+}
+
+.input-container input {
+    flex: 1;
+    padding: 0.75rem;
+    border: 1px solid var(--light);
+    border-radius: 8px;
+    font-size: 1rem;
+    min-width: 120px;
+}
+
+.input-container input:focus {
+    outline: none;
+    border-color: var(--primary);
+}
+
+
+.stats-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+    background: var(--white);
+    border-radius: var(--radius);
+    padding: 1rem;
+    margin-bottom: 1.5rem;
+    box-shadow: var(--shadow);
+}
+
+.stat-item {
+    flex: 1;
+    text-align: center;
+    min-width: 100px;
+}
+
+.stat-label {
+    display: block;
+    font-size: 0.75rem;
+    color: var(--gray);
+    text-transform: uppercase;
+}
+
+.stat-value {
+    display: block;
+    font-size: 1.25rem;
+    font-weight: bold;
+    color: var(--dark);
+}
+
+.stat-item.total .total-value {
+    color: var(--primary);
+    font-size: 1.5rem;
+}
+
+
+.lista-compras {
+    list-style: none;
+    padding: 0;
+    margin-bottom: 1.5rem;
+}
+
+.lista-compras li {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: var(--white);
+    padding: 0.75rem 1rem;
+    margin-bottom: 0.5rem;
+    border-radius: 8px;
+    box-shadow: var(--shadow);
+    transition: all 0.2s;
+}
+
+.lista-compras li:hover {
+    box-shadow: var(--shadow-lg);
+}
+
+.item-info {
+    flex: 1;
+    display: flex;
+    align-items: baseline;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.item-nombre {
+    font-size: 1rem;
+    font-weight: 500;
+}
+
+.item-precio {
+    font-size: 0.875rem;
+    color: var(--primary);
+    font-weight: 500;
+}
+
+.item-usuario {
+    font-size: 0.7rem;
+    color: var(--gray);
+}
+
+.comprado .item-nombre {
+    text-decoration: line-through;
+    color: var(--gray);
+}
+
+.comprado .item-precio {
+    text-decoration: line-through;
+    color: var(--gray);
+}
+
+.item-actions {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.btn-sm {
+    padding: 0.375rem 0.75rem;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.75rem;
+    transition: all 0.2s;
+}
+
+.btn-comprar {
+    background: var(--success);
+    color: white;
+}
+
+.btn-comprar:hover {
+    background: #0e9f6e;
+}
+
+.btn-comprar:disabled {
+    background: #9ca3af;
+    cursor: not-allowed;
+}
+
+.btn-precio {
+    background: var(--primary);
+    color: white;
+}
+
+.btn-precio:hover {
+    background: var(--primary-dark);
+}
+
+.btn-eliminar {
+    background: var(--danger);
+    color: white;
+}
+
+.btn-eliminar:hover {
+    background: #dc2626;
+}
+
+
+.action-bar {
+    display: flex;
+    gap: 0.75rem;
+    justify-content: center;
+    padding-top: 1rem;
+    border-top: 1px solid var(--light);
+}
+
+.btn-primary, .btn-success, .btn-secondary, .btn-danger {
+    padding: 0.625rem 1.25rem;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: 500;
+    transition: all 0.2s;
+}
+
+.btn-primary {
+    background: var(--primary);
+    color: white;
+}
+
+.btn-primary:hover {
+    background: var(--primary-dark);
+}
+
+.btn-success {
+    background: var(--success);
+    color: white;
+}
+
+.btn-success:hover {
+    background: #0e9f6e;
+}
+
+.btn-danger {
+    background: var(--danger);
+    color: white;
+}
+
+.btn-danger:hover {
+    background: #dc2626;
+}
+
+.btn-secondary {
+    background: var(--gray);
+    color: white;
+}
+
+.btn-secondary:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.btn-large {
+    padding: 0.875rem 1.5rem;
+    font-size: 1rem;
+    width: 100%;
+}
+
+
+.modal {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0,0,0,0.5);
+    z-index: 1000;
+    justify-content: center;
+    align-items: center;
+}
+
+.modal.active {
+    display: flex;
+}
+
+.modal-content {
+    background: var(--white);
+    border-radius: var(--radius);
+    max-width: 400px;
+    width: 90%;
+}
+
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1rem 1.5rem;
+    border-bottom: 1px solid var(--light);
+}
+
+.modal-close {
+    background: none;
+    border: none;
+    font-size: 1.5rem;
+    cursor: pointer;
+}
+
+.modal-body {
+    padding: 1.5rem;
+}
+
+.notification {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    padding: 12px 20px;
+    border-radius: 8px;
+    color: white;
+    z-index: 2000;
+    animation: slideIn 0.3s ease;
+}
+
+@keyframes slideIn {
+    from {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+.text-muted {
+    color: var(--gray);
+    font-size: 0.75rem;
+}
+
+
+@media (max-width: 600px) {
+    .stats-bar {
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+
+    .stat-item {
+        text-align: left;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .item-info {
+        flex-direction: column;
+        gap: 0.25rem;
+    }
+
+    .item-actions {
+        flex-direction: column;
+    }
+
+    .action-bar {
+        flex-direction: column;
+    }
+}
+```
+

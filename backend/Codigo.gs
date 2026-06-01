@@ -13,7 +13,7 @@
 
 // Configuración de seguridad - SOLO PERMITIR ESTOS DOMINIOS
 const DOMINIOS_PERMITIDOS = [
-  "https://TU-USUARIO.github.io",
+  "https://ferjosegonza.github.io/lista_del_super/",
   "http://localhost:5500/",
   "http://localhost:80/",
   "http://localhost/",
@@ -21,7 +21,7 @@ const DOMINIOS_PERMITIDOS = [
 ];
 
 // ID del Google Sheet (CREA UNO NUEVO Y PON SU ID AQUÍ)
-const SPREADSHEET_ID = "TU_SPREADSHEET_ID_AQUI";
+const SPREADSHEET_ID = "1uVYuQlPyybXWO3wEhjMUdCbQpTJfwhmIahb0ox6kY-c";
 
 // Nombres de las hojas
 const HOJAS = {
@@ -66,18 +66,31 @@ function jsonpResponse(callback, resultado) {
 }
 
 function esDominioPermitido(origen, referer) {
-  const normalizar = (url) => (url || "").replace(/\/+$/, "");
+  const normalizar = (url) => {
+    if (!url) return "";
+    // Eliminar puertos comunes (5500, 80, etc.) para comparar limpiamente
+    let limpia = url.replace(/:\d+/, "");
+    return limpia.replace(/\/+$/, "");
+  };
+  
   const o = normalizar(origen);
   const r = normalizar(referer);
 
+  // Permitir localhost para pruebas
   if (o.includes("localhost") || r.includes("localhost") ||
       o.includes("127.0.0.1") || r.includes("127.0.0.1")) {
     return true;
   }
 
-  return DOMINIOS_PERMITIDOS.some(dominio =>
-    o.startsWith(normalizar(dominio)) || r.startsWith(normalizar(dominio))
-  );
+  // Verificar contra lista blanca
+  for (let dominio of DOMINIOS_PERMITIDOS) {
+    const dominioLimpio = normalizar(dominio);
+    if (o.startsWith(dominioLimpio) || r.startsWith(dominioLimpio)) {
+      return true;
+    }
+  }
+  
+  return false;
 }
 
 // =====================================================
@@ -315,3 +328,4 @@ function ejecutarAccion(accion, token, datos) {
       return { success: false, error: "Acción no válida" };
   }
 }
+
