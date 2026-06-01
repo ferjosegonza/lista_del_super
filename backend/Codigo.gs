@@ -165,10 +165,11 @@ function obtenerItems() {
       items.push({
         id: datos[i][0],
         nombre: datos[i][1],
-        precio: datos[i][2],
-        comprado: datos[i][3] === true,
-        agregadoPor: datos[i][4],
-        fecha: datos[i][5]
+        cantidad: datos[i][2] || 1,
+        precioUnitario: datos[i][3] === "" ? null : datos[i][3],
+        enChango: datos[i][4] === true,
+        agregadoPor: datos[i][5],
+        fecha: datos[i][6]
       });
     }
   }
@@ -183,7 +184,7 @@ function agregarItem(item, emailUsuario) {
 
   if (!hoja) {
     hoja = ss.insertSheet(HOJAS.ITEMS);
-    hoja.appendRow(["ID", "Nombre", "Precio", "Comprado", "AgregadoPor", "Fecha"]);
+    hoja.appendRow(["ID", "Nombre", "Cantidad", "PrecioUnitario", "EnChango", "AgregadoPor", "Fecha"]);
   }
 
   // Verificar si ya existe (case insensitive)
@@ -195,10 +196,14 @@ function agregarItem(item, emailUsuario) {
   }
 
   const id = "ITEM-" + Date.now();
+  const cantidad = item.cantidad || 1;
+  const precioFinal = (item.precioUnitario && item.precioUnitario > 0) ? item.precioUnitario : "";
+  
   hoja.appendRow([
     id,
     item.nombre,
-    item.precio || 0,
+    cantidad,
+    precioFinal,
     false,
     emailUsuario,
     new Date().toISOString()
@@ -208,7 +213,7 @@ function agregarItem(item, emailUsuario) {
   return { success: true, id: id };
 }
 
-function toggleComprado(id, emailUsuario) {
+function toggleEnChango(id, emailUsuario) {
   const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
   let hoja = ss.getSheetByName(HOJAS.ITEMS);
   if (!hoja) return { success: false, error: "Hoja no encontrada" };
@@ -221,7 +226,7 @@ function toggleComprado(id, emailUsuario) {
   for (let i = 1; i < datos.length; i++) {
     if (datos[i][0] === id) {
       fila = i + 1;
-      estadoActual = datos[i][3] === true;
+      estadoActual = datos[i][4] === true;
       nombreItem = datos[i][1];
       break;
     }
@@ -229,8 +234,8 @@ function toggleComprado(id, emailUsuario) {
 
   if (fila === -1) return { success: false, error: "Item no encontrado" };
 
-  hoja.getRange(fila, 4).setValue(!estadoActual);
-  registrarSesion(emailUsuario, `${!estadoActual ? "comprar" : "desmarcar"}_${nombreItem}`);
+  hoja.getRange(fila, 5).setValue(!estadoActual);
+  registrarSesion(emailUsuario, `${!estadoActual ? "agregar_al_chango" : "quitar_del_chango"}_${nombreItem}`);
   return { success: true, nuevoEstado: !estadoActual };
 }
 
@@ -252,7 +257,7 @@ function eliminarItem(id, emailUsuario) {
   return false;
 }
 
-function actualizarPrecio(id, nuevoPrecio, emailUsuario) {
+function actualizarPrecioYCantidad(id, cantidad, precioUnitario, emailUsuario) {
   const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
   let hoja = ss.getSheetByName(HOJAS.ITEMS);
   if (!hoja) return { success: false, error: "Hoja no encontrada" };
@@ -271,18 +276,48 @@ function actualizarPrecio(id, nuevoPrecio, emailUsuario) {
 
   if (fila === -1) return { success: false, error: "Item no encontrado" };
 
-  hoja.getRange(fila, 3).setValue(nuevoPrecio);
-  registrarSesion(emailUsuario, `actualizar_precio_${nombreItem}_a_${nuevoPrecio}`);
+  if (cantidad !== undefined) {
+    hoja.getRange(fila, 3).setValue(cantidad);
+  }
+  
+  const precioFinal = (precioUnitario && precioUnitario > 0) ? precioUnitario : "";
+  if (precioUnitario !== undefined) {
+    hoja.getRange(fila, 4).setValue(precioFinal);
+  }
+  
+  registrarSesion(emailUsuario, `actualizar_item_${nombreItem}`);
   return { success: true };
+}
+
+function limpiarChango(emailUsuario) {
+  const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  let hoja = ss.getSheetByName(HOJAS.ITEMS);
+  if (!hoja) return { success: false, error: "Hoja no encontrada" };
+
+  const datos = hoja.getDataRange().getValues();
+  let eliminados = 0;
+  
+  for (let i = datos.length - 1; i >= 1; i--) {
+    if (datos[i][4] === true) {
+      hoja.deleteRow(i + 1);
+      eliminados++;
+    }
+  }
+  
+  if (eliminados > 0) {
+    registrarSesion(emailUsuario, `limpiar_chango_${eliminados}_items`);
+  }
+  return { success: true, eliminados: eliminados };
 }
 
 // =====================================================
 // INICIALIZACIÓN DE HOJAS
 // =====================================================
+
 function inicializarTodasLasHojas() {
   const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
   const hojas = {
-    Items: ["ID", "Nombre", "Precio", "Comprado", "AgregadoPor", "Fecha"],
+    Items: ["ID", "Nombre", "Cantidad", "PrecioUnitario", "EnChango", "AgregadoPor", "Fecha"],
     UsuariosPermitidos: ["Email", "Nombre", "Rol", "FechaAlta"],
     RegistroSesiones: ["Fecha", "Email", "Acción"]
   };
@@ -319,12 +354,14 @@ function ejecutarAccion(accion, token, datos) {
       return { success: true, data: obtenerItems() };
     case "agregarItem":
       return agregarItem(datos, emailUsuario);
-    case "toggleComprado":
-      return toggleComprado(datos.id, emailUsuario);
+    case "toggleEnChango":
+      return toggleEnChango(datos.id, emailUsuario);
     case "eliminarItem":
       return { success: true, data: eliminarItem(datos.id, emailUsuario) };
-    case "actualizarPrecio":
-      return actualizarPrecio(datos.id, datos.precio, emailUsuario);
+    case "actualizarPrecioYCantidad":
+      return actualizarPrecioYCantidad(datos.id, datos.cantidad, datos.precioUnitario, emailUsuario);
+    case "limpiarChango":
+      return limpiarChango(emailUsuario);
     default:
       return { success: false, error: "Acción no válida" };
   }

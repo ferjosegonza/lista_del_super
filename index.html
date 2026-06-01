@@ -7,7 +7,7 @@
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <!-- Pantalla de Login -->
+
     <div id="loginScreen" class="login-screen">
         <div class="login-card">
             <div class="login-icon">🛒</div>
@@ -26,7 +26,6 @@
         </div>
     </div>
 
-    <!-- Pantalla Principal (oculta hasta login) -->
     <div id="appScreen" class="app-container" style="display: none;">
         <div class="app-header">
             <h1>🛒 Lista de Compras</h1>
@@ -37,35 +36,58 @@
         </div>
 
         <div class="input-container">
-            <input type="text" id="item-input" placeholder="Nuevo ítem..." autocomplete="off">
-            <input type="number" id="price-input" placeholder="Precio $" step="0.01">
+            <input type="text" id="item-input" placeholder="Producto..." autocomplete="off">
+            <input type="number" id="cantidad-input" placeholder="Cant." value="1" min="1" step="1">
+            <input type="number" id="price-input" placeholder="$ Precio c/u" step="0.01">
             <button id="btnAgregar" class="btn-success">+ Agregar</button>
         </div>
 
         <div class="stats-bar">
             <div class="stat-item">
-                <span class="stat-label">Total de ítems:</span>
+                <span class="stat-label">📋 Total ítems</span>
                 <span id="totalItems" class="stat-value">0</span>
             </div>
             <div class="stat-item">
-                <span class="stat-label">Pendientes:</span>
-                <span id="pendientes" class="stat-value">0</span>
-            </div>
-            <div class="stat-item">
-                <span class="stat-label">Comprados:</span>
-                <span id="comprados" class="stat-value">0</span>
+                <span class="stat-label">🛒 En chango</span>
+                <span id="enChangoCount" class="stat-value">0</span>
             </div>
             <div class="stat-item total">
-                <span class="stat-label">💰 Total acumulado:</span>
+                <span class="stat-label">💰 Total chango</span>
                 <span id="totalPrecio" class="stat-value total-value">$0.00</span>
             </div>
         </div>
 
-        <ul id="lista-compras" class="lista-compras"></ul>
+        <!-- Lista de ítems SIN precio -->
+        <div class="section-header">
+            <h3>📝 Sin precio <span id="sinPrecioCount" class="badge">0</span></h3>
+        </div>
+        <ul id="lista-sin-precio" class="lista-compras"></ul>
+
+        <!-- Lista de ítems CON precio (fuera del chango) -->
+        <div class="section-header">
+            <h3>💰 Con precio <span id="conPrecioCount" class="badge">0</span></h3>
+        </div>
+        <ul id="lista-con-precio" class="lista-compras"></ul>
+
+        <!-- Lista de ítems EN EL CHANGO -->
+        <div class="section-header chango-header">
+            <h3>🛒 En el chango <span id="enChangoItemsCount" class="badge badge-warning">0</span></h3>
+            <button id="btnLimpiarChango" class="btn-sm btn-warning">🗑️ Limpiar chango</button>
+        </div>
+        <ul id="lista-en-chango" class="lista-compras chango-list"></ul>
 
         <div class="action-bar">
-            <button id="btnDeshacer" class="btn-secondary" disabled>↩️ Deshacer última acción</button>
-            <button id="btnLimpiarComprados" class="btn-danger">🗑️ Limpiar comprados</button>
+            <button id="btnDeshacer" class="btn-secondary" disabled>↩️ Deshacer</button>
+        </div>
+    </div>
+
+    <div id="modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="modalTitle">Título</h3>
+                <button class="modal-close">&times;</button>
+            </div>
+            <div class="modal-body" id="modalBody"></div>
         </div>
     </div>
 
