@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>Lista de Compras</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <!-- Pantalla de Login -->
+    <div id="loginScreen" class="login-screen">
+        <div class="login-card">
+            <div class="login-icon">🛒</div>
+            <h1>Lista de Compras</h1>
+            <p>Gestión colaborativa del supermercado</p>
+            <div class="login-divider"></div>
+            <div id="login-status" class="login-status"></div>
+            <form id="loginForm" class="login-form">
+                <div class="form-group">
+                    <label>✉️ Tu correo electrónico</label>
+                    <input type="email" id="loginEmail" placeholder="tucorreo@gmail.com" required autofocus>
+                </div>
+                <button type="submit" class="btn-primary btn-large">Ingresar</button>
+            </form>
+            <p class="login-note">Solo usuarios autorizados pueden acceder</p>
+        </div>
+    </div>
+
+    <!-- Pantalla Principal (oculta hasta login) -->
+    <div id="appScreen" class="app-container" style="display: none;">
+        <div class="app-header">
+            <h1>🛒 Lista de Compras</h1>
+            <div class="user-info">
+                <span id="userEmail"></span>
+                <button id="btnLogout" class="btn-logout-sm">🚪 Salir</button>
+            </div>
+        </div>
+
+        <div class="input-container">
+            <input type="text" id="item-input" placeholder="Nuevo ítem..." autocomplete="off">
+            <input type="number" id="price-input" placeholder="Precio $" step="0.01">
+            <button id="btnAgregar" class="btn-success">+ Agregar</button>
+        </div>
+
+        <div class="stats-bar">
+            <div class="stat-item">
+                <span class="stat-label">Total de ítems:</span>
+                <span id="totalItems" class="stat-value">0</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-label">Pendientes:</span>
+                <span id="pendientes" class="stat-value">0</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-label">Comprados:</span>
+                <span id="comprados" class="stat-value">0</span>
+            </div>
+            <div class="stat-item total">
+                <span class="stat-label">💰 Total acumulado:</span>
+                <span id="totalPrecio" class="stat-value total-value">$0.00</span>
+            </div>
+        </div>
+
+        <ul id="lista-compras" class="lista-compras"></ul>
+
+        <div class="action-bar">
+            <button id="btnDeshacer" class="btn-secondary" disabled>↩️ Deshacer última acción</button>
+            <button id="btnLimpiarComprados" class="btn-danger">🗑️ Limpiar comprados</button>
+        </div>
+    </div>
+
+    <script src="config.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>
