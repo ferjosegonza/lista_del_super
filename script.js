@@ -26,7 +26,7 @@ function callGAS(accion, datos = {}) {
     return result;
 }
 
-function callGASOnce(accion, datos, token) {
+/*function callGASOnce(accion, datos, token) {
     return new Promise((resolve, reject) => {
         const callbackName = 'cb_' + (++requestSeq) + '_' + Date.now();
         let settled = false;
@@ -64,24 +64,96 @@ function callGASOnce(accion, datos, token) {
         script.src = url.toString();
         document.head.appendChild(script);
     });
+}*/
+
+function callGASOnce(accion, datos, token) {
+    return new Promise((resolve, reject) => {
+        const callbackName = 'cb_' + (++requestSeq) + '_' + Date.now();
+        let settled = false;
+
+        const origin = window.location.origin === 'null' ? '' : window.location.origin;
+        const referer = window.location.href;
+
+        const url = new URL(CONFIG.GAS_URL);
+        url.searchParams.set('accion', accion);
+        url.searchParams.set('token', token || '');
+        url.searchParams.set('datos', JSON.stringify(datos));
+        url.searchParams.set('callback', callbackName);
+        url.searchParams.set('origin', origin);
+        url.searchParams.set('referer', referer);
+        url.searchParams.set('_nocache', Date.now());
+
+        // 🔍 DEPURACIÓN VISUAL - Mostrar en pantalla
+        const debugDiv = document.getElementById('login-debug') || (() => {
+            const div = document.createElement('div');
+            div.id = 'login-debug';
+            div.style.cssText = 'position:fixed; bottom:0; left:0; right:0; background:#333; color:#0f0; font-size:10px; padding:5px; z-index:9999; word-break:break-all; max-height:150px; overflow:auto;';
+            document.body.appendChild(div);
+            return div;
+        })();
+        debugDiv.innerHTML = `📡 Conectando a: ${url.toString()}<br>` + debugDiv.innerHTML;
+
+        const script = document.createElement('script');
+
+        const settle = (fn, value) => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(timeoutIds[callbackName]);
+            delete window[callbackName];
+            if (script.parentNode) script.parentNode.removeChild(script);
+            fn(value);
+        };
+
+        window[callbackName] = (resultado) => {
+            debugDiv.innerHTML = `✅ Respuesta recibida: ${JSON.stringify(resultado).substring(0, 200)}<br>` + debugDiv.innerHTML;
+            settle(resolve, resultado);
+        };
+
+        timeoutIds[callbackName] = setTimeout(() => {
+            debugDiv.innerHTML = `❌ TIMEOUT - El backend no respondió en 30 segundos<br>` + debugDiv.innerHTML;
+            settle(reject, new Error('Timeout: el backend no respondió'));
+        }, 30000);
+
+        script.onerror = () => {
+            debugDiv.innerHTML = `❌ ERROR DE CARGA - No se pudo cargar el script. URL: ${url.toString()}<br>` + debugDiv.innerHTML;
+            settle(reject, new Error('Error de conexión'));
+        };
+
+        script.src = url.toString();
+        document.head.appendChild(script);
+    });
 }
 
 // =====================================================
 // AUTENTICACIÓN
 // =====================================================
 async function login(email) {
+    const debugDiv = document.getElementById('login-debug') || (() => {
+        const div = document.createElement('div');
+        div.id = 'login-debug';
+        div.style.cssText = 'position:fixed; bottom:0; left:0; right:0; background:#333; color:#0f0; font-size:10px; padding:5px; z-index:9999; word-break:break-all; max-height:200px; overflow:auto;';
+        document.body.appendChild(div);
+        return div;
+    })();
+    
+    debugDiv.innerHTML = `🔐 Intentando login con: ${email}<br>` + debugDiv.innerHTML;
+    
     try {
         const resultado = await callGAS('login', { email: email });
+        debugDiv.innerHTML = `📦 Respuesta login: ${JSON.stringify(resultado)}<br>` + debugDiv.innerHTML;
+        
         if (resultado.success && resultado.data?.token) {
             currentToken = resultado.data.token;
             currentUser = email;
             localStorage.setItem('listToken', currentToken);
             localStorage.setItem('listUser', currentUser);
+            debugDiv.innerHTML = `✅ Login exitoso! Token guardado.<br>` + debugDiv.innerHTML;
             return true;
         } else {
             throw new Error(resultado.error || 'Email no autorizado');
         }
     } catch (error) {
+        debugDiv.innerHTML = `❌ Login falló: ${error.message}<br>` + debugDiv.innerHTML;
         throw error;
     }
 }

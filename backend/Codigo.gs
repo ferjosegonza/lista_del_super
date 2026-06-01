@@ -13,7 +13,8 @@
 
 // Configuración de seguridad - SOLO PERMITIR ESTOS DOMINIOS
 const DOMINIOS_PERMITIDOS = [
-  "https://ferjosegonza.github.io/lista_del_super/",
+  "https://ferjosegonza.github.io",
+  "https://ferjosegonza.github.io/lista_del_super",
   "http://localhost:5500/",
   "http://localhost:80/",
   "http://localhost/",
@@ -103,7 +104,7 @@ function verificarLogin(email) {
   if (!hoja) {
     hoja = ss.insertSheet(HOJAS.USUARIOS_PERMITIDOS);
     hoja.appendRow(["Email", "Nombre", "Rol", "FechaAlta"]);
-    hoja.appendRow(["TU_EMAIL_AQUI@gmail.com", "Administrador", "admin", new Date().toISOString()]);
+    hoja.appendRow(["fer.jose.gonza@gmail.com", "Administrador", "admin", new Date().toISOString()]);
   }
 
   const datos = hoja.getDataRange().getValues();

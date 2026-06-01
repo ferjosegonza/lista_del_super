@@ -12,7 +12,7 @@
 ## 🎯 Objetivo
 Quiero que:
 1. Tengas en cuenta todos los cambios necesarios en todos los archivos del proyecto y no me des ejemplos sino todo el código completo que necesito modificar, no es necesario que me devuelvas todos los códigos completos pero sí el código completo de lo que es nuevo y me especifiqués bien a qué archivo copiarselo, qué parte reemplaza, qué código borrar, no dejes cabos sueltos. Tu explicación debe ser detallada y permitir la implementación completa de todo lo que te pido.
-2. ya actualicé "Codigo.gs" dime si ves que realmente ahora está en DOMINIOS_PERMITIDOS el link de github pages, sigo sin poder ingresar desde el celular, sólo desde la notebook y no puedo ver la consola del celu porque no tengo conectado el celu a la pc sólo veo "Error de conexión" dentro de la función function callGASOnce(accion, datos, token)
+2. 
 ---
 ## 🧠 Código fuente de los archivos mencionados
 
@@ -34,7 +34,8 @@ Quiero que:
 
 // Configuración de seguridad - SOLO PERMITIR ESTOS DOMINIOS
 const DOMINIOS_PERMITIDOS = [
-  "https://ferjosegonza.github.io/lista_del_super/",
+  "https://ferjosegonza.github.io",
+  "https://ferjosegonza.github.io/lista_del_super",
   "http://localhost:5500/",
   "http://localhost:80/",
   "http://localhost/",
@@ -355,7 +356,7 @@ function ejecutarAccion(accion, token, datos) {
 
 ```javascript
 const CONFIG = {
-    GAS_URL: "https://script.google.com/macros/s/AKfycbwSXSjz59A1hOmOb13Q6X1u4M9I0jGqq06H7eDRAuxHAAmzHD9uLnmlgdYzdophj-6SSw/exec",
+    GAS_URL: "https://script.google.com/macros/s/AKfycbzR8b4_uepcMWApWXKExR01BNPcufKGvtxU_nY_7dxRvYZlCsBUyHiVHE52HQiWJKHxqw/exec",
     SESSION_EXPIRATION: 24 * 60 * 60 * 1000
 };
 ```
