@@ -91,7 +91,7 @@ function callGASOnce(accion, datos, token) {
             document.body.appendChild(div);
             return div;
         })();
-        debugDiv.innerHTML = `📡 Conectando a: ${url.toString()}<br>` + debugDiv.innerHTML;
+        //debugDiv.innerHTML = `📡 Conectando a: ${url.toString()}<br>` + debugDiv.innerHTML;
 
         const script = document.createElement('script');
 
@@ -105,17 +105,17 @@ function callGASOnce(accion, datos, token) {
         };
 
         window[callbackName] = (resultado) => {
-            debugDiv.innerHTML = `✅ Respuesta recibida: ${JSON.stringify(resultado).substring(0, 200)}<br>` + debugDiv.innerHTML;
+            // debugDiv.innerHTML = `✅ Respuesta recibida: ${JSON.stringify(resultado).substring(0, 200)}<br>` + debugDiv.innerHTML;
             settle(resolve, resultado);
         };
 
         timeoutIds[callbackName] = setTimeout(() => {
-            debugDiv.innerHTML = `❌ TIMEOUT - El backend no respondió en 30 segundos<br>` + debugDiv.innerHTML;
+            //debugDiv.innerHTML = `❌ TIMEOUT - El backend no respondió en 30 segundos<br>` + debugDiv.innerHTML;
             settle(reject, new Error('Timeout: el backend no respondió'));
         }, 30000);
 
         script.onerror = () => {
-            debugDiv.innerHTML = `❌ ERROR DE CARGA - No se pudo cargar el script. URL: ${url.toString()}<br>` + debugDiv.innerHTML;
+            //debugDiv.innerHTML = `❌ ERROR DE CARGA - No se pudo cargar el script. URL: ${url.toString()}<br>` + debugDiv.innerHTML;
             settle(reject, new Error('Error de conexión'));
         };
 
@@ -136,24 +136,24 @@ async function login(email) {
         return div;
     })();
     
-    debugDiv.innerHTML = `🔐 Intentando login con: ${email}<br>` + debugDiv.innerHTML;
+    //debugDiv.innerHTML = `🔐 Intentando login con: ${email}<br>` + debugDiv.innerHTML;
     
     try {
         const resultado = await callGAS('login', { email: email });
-        debugDiv.innerHTML = `📦 Respuesta login: ${JSON.stringify(resultado)}<br>` + debugDiv.innerHTML;
+        //debugDiv.innerHTML = `📦 Respuesta login: ${JSON.stringify(resultado)}<br>` + debugDiv.innerHTML;
         
         if (resultado.success && resultado.data?.token) {
             currentToken = resultado.data.token;
             currentUser = email;
             localStorage.setItem('listToken', currentToken);
             localStorage.setItem('listUser', currentUser);
-            debugDiv.innerHTML = `✅ Login exitoso! Token guardado.<br>` + debugDiv.innerHTML;
+            //debugDiv.innerHTML = `✅ Login exitoso! Token guardado.<br>` + debugDiv.innerHTML;
             return true;
         } else {
             throw new Error(resultado.error || 'Email no autorizado');
         }
     } catch (error) {
-        debugDiv.innerHTML = `❌ Login falló: ${error.message}<br>` + debugDiv.innerHTML;
+        //debugDiv.innerHTML = `❌ Login falló: ${error.message}<br>` + debugDiv.innerHTML;
         throw error;
     }
 }
