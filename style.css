@@ -593,3 +593,118 @@ body {
         gap: 0.5rem;
     }
 }
+
+/* ========== ESTILOS MEJORADOS PARA MÓVIL ========== */
+/* Botones más grandes y fáciles de tocar en móvil */
+@media (max-width: 768px) {
+    .btn-sm {
+        padding: 0.5rem 0.75rem;
+        font-size: 0.8rem;
+        min-width: 65px;
+    }
+    
+    .item-actions {
+        flex-direction: row;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+    }
+    
+    .item-actions .btn-sm {
+        flex: 1;
+        min-width: 70px;
+        text-align: center;
+    }
+    
+    .action-bar {
+        flex-direction: row;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+    }
+    
+    .action-bar .btn-sm {
+        flex: 1;
+        min-width: 80px;
+        padding: 0.6rem 0.5rem;
+        font-size: 0.75rem;
+    }
+    
+    .section-header {
+        flex-direction: row;
+        flex-wrap: wrap;
+        justify-content: space-between;
+        align-items: center;
+    }
+    
+    .section-header button {
+        padding: 0.4rem 0.8rem;
+        font-size: 0.7rem;
+    }
+    
+    .stats-bar {
+        flex-direction: row;
+        flex-wrap: wrap;
+    }
+    
+    .stat-item {
+        flex: 1;
+        min-width: 100px;
+        text-align: center;
+    }
+    
+    .stat-small {
+        font-size: 0.7rem;
+        display: block;
+        margin-top: 0.2rem;
+    }
+    
+    .input-container {
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+    
+    .input-container input,
+    .input-container button {
+        width: 100%;
+        padding: 0.8rem;
+        font-size: 1rem;
+    }
+    
+    .lista-compras li {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 0.75rem;
+    }
+    
+    .item-info {
+        flex-direction: row;
+        flex-wrap: wrap;
+        justify-content: space-between;
+        align-items: center;
+    }
+}
+
+/* Estilo para los subtotales */
+.stat-small {
+    display: block;
+    font-size: 0.7rem;
+    color: var(--gray);
+    margin-top: 0.2rem;
+}
+
+.stat-item.total .stat-small {
+    color: var(--primary-dark);
+}
+
+/* Mejora para los botones de acción en desktop */
+@media (min-width: 769px) {
+    .item-actions {
+        flex-direction: row;
+        gap: 0.3rem;
+    }
+    
+    .action-bar {
+        flex-direction: row;
+        justify-content: center;
+        gap: 1rem;
+    }
+}

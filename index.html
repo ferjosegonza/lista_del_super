@@ -44,16 +44,18 @@
 
         <div class="stats-bar">
             <div class="stat-item">
-                <span class="stat-label">📋 Total ítems</span>
-                <span id="totalItems" class="stat-value">0</span>
+                <span class="stat-label">📋 Sin precio</span>
+                <span id="totalSinPrecio" class="stat-value">0</span>
             </div>
             <div class="stat-item">
-                <span class="stat-label">🛒 En chango</span>
-                <span id="enChangoCount" class="stat-value">0</span>
+                <span class="stat-label">💰 Con precio</span>
+                <span id="totalConPrecio" class="stat-value">0</span>
+                <span id="sumaConPrecio" class="stat-small">$0</span>
             </div>
             <div class="stat-item total">
-                <span class="stat-label">💰 Total chango</span>
-                <span id="totalPrecio" class="stat-value total-value">$0.00</span>
+                <span class="stat-label">🛒 En chango</span>
+                <span id="totalEnChango" class="stat-value">0</span>
+                <span id="sumaEnChango" class="stat-small">$0</span>
             </div>
         </div>
 
@@ -77,7 +79,10 @@
         <ul id="lista-en-chango" class="lista-compras chango-list"></ul>
 
         <div class="action-bar">
-            <button id="btnDeshacer" class="btn-secondary" disabled>↩️ Deshacer</button>
+            <button id="btnLimpiarSinPrecio" class="btn-danger btn-sm">🗑️ Sin precio</button>
+            <button id="btnLimpiarConPrecio" class="btn-danger btn-sm">🗑️ Con precio</button>
+            <button id="btnLimpiarChango" class="btn-warning btn-sm">🗑️ En chango</button>
+            <button id="btnDeshacer" class="btn-secondary btn-sm" disabled>↩️ Deshacer</button>
         </div>
     </div>
 

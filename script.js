@@ -161,18 +161,30 @@ function renderizarLista(elementId, items, tipo) {
 }
 
 function actualizarStats() {
-    const totalItems = itemsCache.length;
-    const enChango = itemsCache.filter(i => i.enChango).length;
-    const totalPrecio = itemsCache.reduce((sum, i) => sum + (i.enChango ? getTotalConPrecio(i) : 0), 0);
-    const sinPrecio = itemsCache.filter(i => !i.precioUnitario || i.precioUnitario === 0 || i.precioUnitario === "").length;
-    const conPrecio = itemsCache.filter(i => i.precioUnitario && i.precioUnitario > 0 && !i.enChango).length;
+    const sinPrecio = itemsCache.filter(i => !i.precioUnitario || i.precioUnitario === 0 || i.precioUnitario === "");
+    const conPrecioFuera = itemsCache.filter(i => i.precioUnitario && i.precioUnitario > 0 && !i.enChango);
+    const enChango = itemsCache.filter(i => i.enChango);
+    
+    const totalSinPrecio = sinPrecio.length;
+    const totalConPrecio = conPrecioFuera.length;
+    const totalEnChango = enChango.length;
+    
+    const sumaConPrecio = conPrecioFuera.reduce((sum, i) => sum + getTotalConPrecio(i), 0);
+    const sumaEnChango = enChango.reduce((sum, i) => sum + getTotalConPrecio(i), 0);
 
-    document.getElementById('totalItems') && (document.getElementById('totalItems').innerText = totalItems);
-    document.getElementById('enChangoCount') && (document.getElementById('enChangoCount').innerText = enChango);
-    document.getElementById('totalPrecio') && (document.getElementById('totalPrecio').innerText = `$${totalPrecio.toFixed(2)}`);
-    document.getElementById('sinPrecioCount') && (document.getElementById('sinPrecioCount').innerText = sinPrecio);
-    document.getElementById('conPrecioCount') && (document.getElementById('conPrecioCount').innerText = conPrecio);
-    document.getElementById('enChangoItemsCount') && (document.getElementById('enChangoItemsCount').innerText = enChango);
+    document.getElementById('totalSinPrecio') && (document.getElementById('totalSinPrecio').innerText = totalSinPrecio);
+    document.getElementById('totalConPrecio') && (document.getElementById('totalConPrecio').innerText = totalConPrecio);
+    document.getElementById('totalEnChango') && (document.getElementById('totalEnChango').innerText = totalEnChango);
+    document.getElementById('sumaConPrecio') && (document.getElementById('sumaConPrecio').innerHTML = `$${sumaConPrecio.toFixed(2)}`);
+    document.getElementById('sumaEnChango') && (document.getElementById('sumaEnChango').innerHTML = `$${sumaEnChango.toFixed(2)}`);
+    
+    // Mantener compatibilidad con IDs existentes
+    document.getElementById('totalItems') && (document.getElementById('totalItems').innerText = itemsCache.length);
+    document.getElementById('enChangoCount') && (document.getElementById('enChangoCount').innerText = totalEnChango);
+    document.getElementById('totalPrecio') && (document.getElementById('totalPrecio').innerText = `$${sumaEnChango.toFixed(2)}`);
+    document.getElementById('sinPrecioCount') && (document.getElementById('sinPrecioCount').innerText = totalSinPrecio);
+    document.getElementById('conPrecioCount') && (document.getElementById('conPrecioCount').innerText = totalConPrecio);
+    document.getElementById('enChangoItemsCount') && (document.getElementById('enChangoItemsCount').innerText = totalEnChango);
 }
 
 async function agregarItem() {
@@ -310,14 +322,57 @@ async function editarItem(id) {
 async function limpiarChango() {
     const enChango = itemsCache.filter(i => i.enChango);
     if (enChango.length === 0) {
-        mostrarNotificacion('No hay ítems en el chango', 'info');
+        mostrarNotificacion('No hay ítems en el chango para limpiar', 'info');
         return;
     }
-    if (!confirm(`¿Eliminar los ${enChango.length} ítems del chango?`)) return;
+    if (!confirm(`¿Eliminar los ${enChango.length} ítems del chango permanentemente?`)) return;
+    
     try {
         const result = await callGAS('limpiarChango', {});
         if (result.success) {
             mostrarNotificacion(`${result.data?.eliminados || enChango.length} ítems eliminados del chango`, 'success');
+            await cargarItems();
+        } else {
+            mostrarNotificacion(`Error: ${result.error}`, 'error');
+        }
+    } catch (error) {
+        mostrarNotificacion(`Error: ${error.message}`, 'error');
+    }
+}
+
+async function limpiarSinPrecio() {
+    const sinPrecio = itemsCache.filter(i => !i.precioUnitario || i.precioUnitario === 0 || i.precioUnitario === "");
+    if (sinPrecio.length === 0) {
+        mostrarNotificacion('No hay ítems sin precio para limpiar', 'info');
+        return;
+    }
+    if (!confirm(`¿Eliminar los ${sinPrecio.length} ítems sin precio permanentemente?`)) return;
+    
+    try {
+        const result = await callGAS('limpiarSinPrecio', {});
+        if (result.success) {
+            mostrarNotificacion(`${result.data?.eliminados || sinPrecio.length} ítems sin precio eliminados`, 'success');
+            await cargarItems();
+        } else {
+            mostrarNotificacion(`Error: ${result.error}`, 'error');
+        }
+    } catch (error) {
+        mostrarNotificacion(`Error: ${error.message}`, 'error');
+    }
+}
+
+async function limpiarConPrecio() {
+    const conPrecio = itemsCache.filter(i => i.precioUnitario && i.precioUnitario > 0 && !i.enChango);
+    if (conPrecio.length === 0) {
+        mostrarNotificacion('No hay ítems con precio fuera del chango para limpiar', 'info');
+        return;
+    }
+    if (!confirm(`¿Eliminar los ${conPrecio.length} ítems con precio permanentemente?`)) return;
+    
+    try {
+        const result = await callGAS('limpiarConPrecio', {});
+        if (result.success) {
+            mostrarNotificacion(`${result.data?.eliminados || conPrecio.length} ítems con precio eliminados`, 'success');
             await cargarItems();
         } else {
             mostrarNotificacion(`Error: ${result.error}`, 'error');
@@ -438,10 +493,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('item-input')?.addEventListener('keypress', (e) => { if (e.key === 'Enter') agregarItem(); });
     document.getElementById('btnLogout')?.addEventListener('click', () => { logout(); showLoginScreen(); });
     document.getElementById('btnDeshacer')?.addEventListener('click', deshacer);
+    document.getElementById('btnLimpiarSinPrecio')?.addEventListener('click', limpiarSinPrecio);
+    document.getElementById('btnLimpiarConPrecio')?.addEventListener('click', limpiarConPrecio);
     document.getElementById('btnLimpiarChango')?.addEventListener('click', limpiarChango);
 
     const modal = document.getElementById('modal');
     if (modal) {
         modal.addEventListener('click', (e) => { if (e.target === modal) modal.classList.remove('active'); });
     }
+
 });
