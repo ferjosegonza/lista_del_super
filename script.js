@@ -1,106 +1,19 @@
-let currentUser = null;
-let currentToken = null;
+// =====================================================
+// LISTA DE COMPRAS - VERSIÓN 100% FRONTEND
+// SIN PERSISTENCIA - SOLO MEMORIA LOCAL
+// =====================================================
+
 let itemsCache = [];
 let historialAcciones = [];
-let timeoutIds = {};
-let requestSeq = 0;
-let requestChain = Promise.resolve();
+let nextId = 1;
+let isWhatsAppVisible = false;
 
-function callGAS(accion, datos = {}) {
-    const token = currentToken;
-    if (!token && accion !== 'login') {
-        return Promise.reject(new Error('No autenticado'));
-    }
-    const task = () => callGASOnce(accion, datos, token);
-    const result = requestChain.then(task, task);
-    requestChain = result.catch(() => {});
-    return result;
-}
+// =====================================================
+// FUNCIONES PRINCIPALES DE LA LISTA
+// =====================================================
 
-function callGASOnce(accion, datos, token) {
-    return new Promise((resolve, reject) => {
-        const callbackName = 'cb_' + (++requestSeq) + '_' + Date.now();
-        let settled = false;
-        const origin = window.location.origin === 'null' ? '' : window.location.origin;
-        const referer = window.location.href;
-        const url = new URL(CONFIG.GAS_URL);
-        url.searchParams.set('accion', accion);
-        url.searchParams.set('token', token || '');
-        url.searchParams.set('datos', JSON.stringify(datos));
-        url.searchParams.set('callback', callbackName);
-        url.searchParams.set('origin', origin);
-        url.searchParams.set('referer', referer);
-        url.searchParams.set('_nocache', Date.now());
-
-        const script = document.createElement('script');
-        const settle = (fn, value) => {
-            if (settled) return;
-            settled = true;
-            clearTimeout(timeoutIds[callbackName]);
-            delete window[callbackName];
-            if (script.parentNode) script.parentNode.removeChild(script);
-            fn(value);
-        };
-        window[callbackName] = (resultado) => settle(resolve, resultado);
-        timeoutIds[callbackName] = setTimeout(() => settle(reject, new Error('Timeout')), 30000);
-        script.onerror = () => settle(reject, new Error('Error de conexión'));
-        script.src = url.toString();
-        document.head.appendChild(script);
-    });
-}
-
-async function login(email) {
-    try {
-        const resultado = await callGAS('login', { email: email });
-        if (resultado.success && resultado.data?.token) {
-            currentToken = resultado.data.token;
-            currentUser = email;
-            localStorage.setItem('listToken', currentToken);
-            localStorage.setItem('listUser', currentUser);
-            return true;
-        } else {
-            throw new Error(resultado.error || 'Email no autorizado');
-        }
-    } catch (error) {
-        throw error;
-    }
-}
-
-async function checkAuth() {
-    const token = localStorage.getItem('listToken');
-    const user = localStorage.getItem('listUser');
-    if (!token || !user) return false;
-    try {
-        const result = await callGAS('verificarSesion', {});
-        if (result.success && result.data.email === user) {
-            currentToken = token;
-            currentUser = user;
-            return true;
-        }
-    } catch (e) {}
-    return false;
-}
-
-function logout() {
-    localStorage.removeItem('listToken');
-    localStorage.removeItem('listUser');
-    currentToken = null;
-    currentUser = null;
-    showLoginScreen();
-}
-
-async function cargarItems() {
-    try {
-        const result = await callGAS('obtenerItems', {});
-        if (result.success) {
-            itemsCache = result.data;
-            renderizarListas();
-            return true;
-        }
-    } catch (error) {
-        mostrarNotificacion('Error al cargar la lista', 'error');
-    }
-    return false;
+function generarId() {
+    return 'ITEM-' + (nextId++);
 }
 
 function getTotalConPrecio(item) {
@@ -140,7 +53,6 @@ function renderizarLista(elementId, items, tipo) {
                 ${item.cantidad > 1 ? `<span class="item-cantidad">${item.cantidad} x</span>` : ''}
                 ${item.precioUnitario ? `<span class="item-precio">$${Number(item.precioUnitario).toFixed(2)}</span>` : '<span class="item-sin-precio">Sin precio</span>'}
                 ${totalPrecio > 0 ? `<span class="item-total">= $${totalPrecio.toFixed(2)}</span>` : ''}
-                <span class="item-usuario">👤 ${escapeHtml(item.agregadoPor || '?')}</span>
             </div>
             <div class="item-actions">
                 ${tipo === 'sinPrecio' ? `
@@ -164,11 +76,11 @@ function actualizarStats() {
     const sinPrecio = itemsCache.filter(i => !i.precioUnitario || i.precioUnitario === 0 || i.precioUnitario === "");
     const conPrecioFuera = itemsCache.filter(i => i.precioUnitario && i.precioUnitario > 0 && !i.enChango);
     const enChango = itemsCache.filter(i => i.enChango);
-    
+
     const totalSinPrecio = sinPrecio.length;
     const totalConPrecio = conPrecioFuera.length;
     const totalEnChango = enChango.length;
-    
+
     const sumaConPrecio = conPrecioFuera.reduce((sum, i) => sum + getTotalConPrecio(i), 0);
     const sumaEnChango = enChango.reduce((sum, i) => sum + getTotalConPrecio(i), 0);
 
@@ -177,17 +89,119 @@ function actualizarStats() {
     document.getElementById('totalEnChango') && (document.getElementById('totalEnChango').innerText = totalEnChango);
     document.getElementById('sumaConPrecio') && (document.getElementById('sumaConPrecio').innerHTML = `$${sumaConPrecio.toFixed(2)}`);
     document.getElementById('sumaEnChango') && (document.getElementById('sumaEnChango').innerHTML = `$${sumaEnChango.toFixed(2)}`);
-    
-    // Mantener compatibilidad con IDs existentes
-    document.getElementById('totalItems') && (document.getElementById('totalItems').innerText = itemsCache.length);
-    document.getElementById('enChangoCount') && (document.getElementById('enChangoCount').innerText = totalEnChango);
-    document.getElementById('totalPrecio') && (document.getElementById('totalPrecio').innerText = `$${sumaEnChango.toFixed(2)}`);
     document.getElementById('sinPrecioCount') && (document.getElementById('sinPrecioCount').innerText = totalSinPrecio);
     document.getElementById('conPrecioCount') && (document.getElementById('conPrecioCount').innerText = totalConPrecio);
     document.getElementById('enChangoItemsCount') && (document.getElementById('enChangoItemsCount').innerText = totalEnChango);
 }
 
-async function agregarItem() {
+// =====================================================
+// PROCESAMIENTO DE WHATSAPP
+// =====================================================
+
+function procesarWhatsApp() {
+    const textarea = document.getElementById('whatsappText');
+    const texto = textarea.value;
+    
+    if (!texto || texto.trim() === '') {
+        mostrarNotificacion('No hay texto para procesar', 'error');
+        return;
+    }
+
+    // Dividir por líneas
+    const lineas = texto.split('\n').filter(line => line.trim() !== '');
+    
+    // Extraer los mensajes de WhatsApp
+    // Formato típico: "[fecha] Nombre: Mensaje"
+    // O también puede ser solo el mensaje sin prefijo
+    const itemsExtraidos = [];
+    
+    for (const linea of lineas) {
+        let textoLimpio = linea.trim();
+        
+        // Intentar extraer el mensaje después del ":" si existe patrón de WhatsApp
+        const patronWhatsApp = /^\[.*?\]\s*[^:]+:\s*(.+)$/;
+        const match = patronWhatsApp.exec(textoLimpio);
+        
+        if (match) {
+            // Es un mensaje de WhatsApp con el formato típico
+            textoLimpio = match[1].trim();
+        }
+        // Si no coincide con el patrón, usar la línea completa
+        
+        // Limpiar espacios extra y caracteres no deseados
+        textoLimpio = textoLimpio.replace(/\s+/g, ' ').trim();
+        
+        // Saltar líneas vacías después de la limpieza
+        if (textoLimpio === '') continue;
+        
+        itemsExtraidos.push(textoLimpio);
+    }
+    
+    if (itemsExtraidos.length === 0) {
+        mostrarNotificacion('No se detectaron mensajes válidos', 'error');
+        return;
+    }
+    
+    // Mostrar conteo
+    document.getElementById('whatsappCount').innerText = `${itemsExtraidos.length} items detectados`;
+    
+    // Preguntar si quiere agregar todos
+    if (confirm(`Se detectaron ${itemsExtraidos.length} items. ¿Desea agregarlos todos a la lista?`)) {
+        let agregados = 0;
+        let duplicados = 0;
+        
+        for (const nombre of itemsExtraidos) {
+            // Verificar si ya existe (case insensitive)
+            const existe = itemsCache.some(item => 
+                item.nombre.toLowerCase() === nombre.toLowerCase()
+            );
+            
+            if (!existe) {
+                const nuevoItem = {
+                    id: generarId(),
+                    nombre: nombre,
+                    cantidad: 1,
+                    precioUnitario: null,
+                    enChango: false
+                };
+                itemsCache.push(nuevoItem);
+                guardarEnHistorial('agregar', nuevoItem.id, { nombre: nombre, cantidad: 1, precioUnitario: null });
+                agregados++;
+            } else {
+                duplicados++;
+            }
+        }
+        
+        if (agregados > 0) {
+            mostrarNotificacion(`✅ ${agregados} items agregados${duplicados > 0 ? ` (${duplicados} duplicados ignorados)` : ''}`, 'success');
+            renderizarListas();
+            textarea.value = '';
+            document.getElementById('whatsappCount').innerText = '0 items detectados';
+            // Ocultar el área de WhatsApp después de procesar
+            toggleWhatsAppArea(false);
+        } else {
+            mostrarNotificacion(`⚠️ No se agregaron items nuevos. ${duplicados} duplicados encontrados.`, 'warning');
+        }
+    }
+}
+
+function toggleWhatsAppArea(show) {
+    const area = document.getElementById('whatsappArea');
+    const btn = document.getElementById('btnToggleWhatsApp');
+    if (show !== undefined) {
+        isWhatsAppVisible = show;
+    } else {
+        isWhatsAppVisible = !isWhatsAppVisible;
+    }
+    area.style.display = isWhatsAppVisible ? 'block' : 'none';
+    btn.innerHTML = isWhatsAppVisible ? '▲ Ocultar' : '▼ Mostrar';
+}
+
+// =====================================================
+// ACCIONES DE ÍTEMS
+// =====================================================
+
+function agregarItem() {
     const nombre = document.getElementById('item-input').value.trim();
     const cantidad = parseInt(document.getElementById('cantidad-input').value) || 1;
     const precioUnitario = parseFloat(document.getElementById('price-input').value) || null;
@@ -205,57 +219,54 @@ async function agregarItem() {
         return;
     }
 
-    guardarEnHistorial('agregar', null, { nombre, cantidad, precioUnitario });
-
-    try {
-        const result = await callGAS('agregarItem', { nombre, cantidad, precioUnitario });
-        if (result.success) {
-            mostrarNotificacion(`"${nombre}" agregado`, 'success');
-            document.getElementById('item-input').value = '';
-            document.getElementById('cantidad-input').value = '1';
-            document.getElementById('price-input').value = '';
-            document.getElementById('item-input').focus();
-            await cargarItems();
-        } else {
-            mostrarNotificacion(`Error: ${result.error}`, 'error');
-        }
-    } catch (error) {
-        mostrarNotificacion(`Error: ${error.message}`, 'error');
+    // Verificar duplicados
+    const existe = itemsCache.some(item => 
+        item.nombre.toLowerCase() === nombre.toLowerCase()
+    );
+    
+    if (existe) {
+        mostrarNotificacion(`"${nombre}" ya existe en la lista`, 'warning');
+        return;
     }
+
+    const nuevoItem = {
+        id: generarId(),
+        nombre: nombre,
+        cantidad: cantidad,
+        precioUnitario: precioUnitario,
+        enChango: false
+    };
+
+    itemsCache.push(nuevoItem);
+    guardarEnHistorial('agregar', nuevoItem.id, { nombre, cantidad, precioUnitario });
+
+    mostrarNotificacion(`"${nombre}" agregado`, 'success');
+    document.getElementById('item-input').value = '';
+    document.getElementById('cantidad-input').value = '1';
+    document.getElementById('price-input').value = '';
+    document.getElementById('item-input').focus();
+    renderizarListas();
 }
 
-async function toggleEnChango(id) {
+function toggleEnChango(id) {
     const item = itemsCache.find(i => i.id === id);
     if (!item) return;
     guardarEnHistorial('toggleEnChango', id, { enChango: item.enChango });
-    try {
-        const result = await callGAS('toggleEnChango', { id });
-        if (result.success) await cargarItems();
-        else mostrarNotificacion(`Error: ${result.error}`, 'error');
-    } catch (error) {
-        mostrarNotificacion(`Error: ${error.message}`, 'error');
-    }
+    item.enChango = !item.enChango;
+    renderizarListas();
 }
 
-async function eliminarItem(id) {
+function eliminarItem(id) {
     const item = itemsCache.find(i => i.id === id);
     if (!item) return;
     if (!confirm(`¿Eliminar "${item.nombre}" permanentemente?`)) return;
     guardarEnHistorial('eliminar', id, item);
-    try {
-        const result = await callGAS('eliminarItem', { id });
-        if (result.success) {
-            mostrarNotificacion(`"${item.nombre}" eliminado`, 'success');
-            await cargarItems();
-        } else {
-            mostrarNotificacion(`Error: ${result.error || 'No se pudo eliminar'}`, 'error');
-        }
-    } catch (error) {
-        mostrarNotificacion(`Error: ${error.message}`, 'error');
-    }
+    itemsCache = itemsCache.filter(i => i.id !== id);
+    mostrarNotificacion(`"${item.nombre}" eliminado`, 'success');
+    renderizarListas();
 }
 
-async function editarItem(id) {
+function editarItem(id) {
     const item = itemsCache.find(i => i.id === id);
     if (!item) return;
 
@@ -292,7 +303,7 @@ async function editarItem(id) {
     if (closeBtn) closeBtn.onclick = cerrarModal;
     if (modalClose) modalClose.onclick = cerrarModal;
 
-    form.onsubmit = async (e) => {
+    form.onsubmit = (e) => {
         e.preventDefault();
         const nuevaCantidad = parseInt(document.getElementById('editCantidad').value) || 1;
         const nuevoPrecio = parseFloat(document.getElementById('editPrecio').value) || null;
@@ -303,84 +314,92 @@ async function editarItem(id) {
         }
 
         guardarEnHistorial('editar', id, { cantidad: item.cantidad, precioUnitario: item.precioUnitario });
-
-        try {
-            const result = await callGAS('actualizarPrecioYCantidad', { id, cantidad: nuevaCantidad, precioUnitario: nuevoPrecio });
-            if (result.success) {
-                mostrarNotificacion('Item actualizado', 'success');
-                cerrarModal();
-                await cargarItems();
-            } else {
-                mostrarNotificacion(`Error: ${result.error}`, 'error');
-            }
-        } catch (error) {
-            mostrarNotificacion(`Error: ${error.message}`, 'error');
-        }
+        
+        item.cantidad = nuevaCantidad;
+        item.precioUnitario = nuevoPrecio;
+        
+        mostrarNotificacion('Item actualizado', 'success');
+        cerrarModal();
+        renderizarListas();
     };
 }
 
-async function limpiarChango() {
+// =====================================================
+// FUNCIONES DE LIMPIEZA
+// =====================================================
+
+function limpiarChango() {
     const enChango = itemsCache.filter(i => i.enChango);
     if (enChango.length === 0) {
         mostrarNotificacion('No hay ítems en el chango para limpiar', 'info');
         return;
     }
     if (!confirm(`¿Eliminar los ${enChango.length} ítems del chango permanentemente?`)) return;
-    
-    try {
-        const result = await callGAS('limpiarChango', {});
-        if (result.success) {
-            mostrarNotificacion(`${result.data?.eliminados || enChango.length} ítems eliminados del chango`, 'success');
-            await cargarItems();
-        } else {
-            mostrarNotificacion(`Error: ${result.error}`, 'error');
-        }
-    } catch (error) {
-        mostrarNotificacion(`Error: ${error.message}`, 'error');
+
+    // Guardar en historial antes de eliminar
+    for (const item of enChango) {
+        guardarEnHistorial('eliminar', item.id, item);
     }
+    
+    itemsCache = itemsCache.filter(i => !i.enChango);
+    mostrarNotificacion(`${enChango.length} ítems eliminados del chango`, 'success');
+    renderizarListas();
 }
 
-async function limpiarSinPrecio() {
+function limpiarSinPrecio() {
     const sinPrecio = itemsCache.filter(i => !i.precioUnitario || i.precioUnitario === 0 || i.precioUnitario === "");
     if (sinPrecio.length === 0) {
         mostrarNotificacion('No hay ítems sin precio para limpiar', 'info');
         return;
     }
     if (!confirm(`¿Eliminar los ${sinPrecio.length} ítems sin precio permanentemente?`)) return;
-    
-    try {
-        const result = await callGAS('limpiarSinPrecio', {});
-        if (result.success) {
-            mostrarNotificacion(`${result.data?.eliminados || sinPrecio.length} ítems sin precio eliminados`, 'success');
-            await cargarItems();
-        } else {
-            mostrarNotificacion(`Error: ${result.error}`, 'error');
-        }
-    } catch (error) {
-        mostrarNotificacion(`Error: ${error.message}`, 'error');
+
+    for (const item of sinPrecio) {
+        guardarEnHistorial('eliminar', item.id, item);
     }
+    
+    itemsCache = itemsCache.filter(i => i.precioUnitario && i.precioUnitario > 0);
+    mostrarNotificacion(`${sinPrecio.length} ítems sin precio eliminados`, 'success');
+    renderizarListas();
 }
 
-async function limpiarConPrecio() {
+function limpiarConPrecio() {
     const conPrecio = itemsCache.filter(i => i.precioUnitario && i.precioUnitario > 0 && !i.enChango);
     if (conPrecio.length === 0) {
         mostrarNotificacion('No hay ítems con precio fuera del chango para limpiar', 'info');
         return;
     }
     if (!confirm(`¿Eliminar los ${conPrecio.length} ítems con precio permanentemente?`)) return;
-    
-    try {
-        const result = await callGAS('limpiarConPrecio', {});
-        if (result.success) {
-            mostrarNotificacion(`${result.data?.eliminados || conPrecio.length} ítems con precio eliminados`, 'success');
-            await cargarItems();
-        } else {
-            mostrarNotificacion(`Error: ${result.error}`, 'error');
-        }
-    } catch (error) {
-        mostrarNotificacion(`Error: ${error.message}`, 'error');
+
+    for (const item of conPrecio) {
+        guardarEnHistorial('eliminar', item.id, item);
     }
+    
+    itemsCache = itemsCache.filter(i => !i.precioUnitario || i.precioUnitario === 0 || i.enChango);
+    mostrarNotificacion(`${conPrecio.length} ítems con precio eliminados`, 'success');
+    renderizarListas();
 }
+
+function limpiarTodo() {
+    if (itemsCache.length === 0) {
+        mostrarNotificacion('La lista ya está vacía', 'info');
+        return;
+    }
+    if (!confirm(`¿Eliminar TODOS los ${itemsCache.length} ítems permanentemente?`)) return;
+
+    // Guardar todo en historial
+    for (const item of itemsCache) {
+        guardarEnHistorial('eliminar', item.id, item);
+    }
+    
+    itemsCache = [];
+    mostrarNotificacion('Lista completamente vaciada', 'success');
+    renderizarListas();
+}
+
+// =====================================================
+// HISTORIAL Y DESHACER
+// =====================================================
 
 function guardarEnHistorial(tipo, id, datos) {
     historialAcciones.push({ tipo, id, datos, timestamp: Date.now() });
@@ -388,33 +407,46 @@ function guardarEnHistorial(tipo, id, datos) {
     actualizarBotonDeshacer();
 }
 
-async function deshacer() {
+function deshacer() {
     if (historialAcciones.length === 0) return;
     const ultima = historialAcciones.pop();
     actualizarBotonDeshacer();
+    
     switch (ultima.tipo) {
         case 'agregar':
-            const itemAgregado = itemsCache.find(i => i.nombre === ultima.datos.nombre);
-            if (itemAgregado) {
-                await callGAS('eliminarItem', { id: itemAgregado.id });
-                await cargarItems();
-                mostrarNotificacion('Se deshizo la adición', 'info');
-            }
+            itemsCache = itemsCache.filter(i => i.id !== ultima.id);
+            mostrarNotificacion('Se deshizo la adición', 'info');
+            renderizarListas();
             break;
         case 'eliminar':
-            await callGAS('agregarItem', { nombre: ultima.datos.nombre, cantidad: ultima.datos.cantidad, precioUnitario: ultima.datos.precioUnitario });
-            await cargarItems();
+            // Recuperar el item eliminado
+            const itemRecuperado = {
+                id: ultima.id || generarId(),
+                nombre: ultima.datos.nombre,
+                cantidad: ultima.datos.cantidad || 1,
+                precioUnitario: ultima.datos.precioUnitario || null,
+                enChango: ultima.datos.enChango || false
+            };
+            itemsCache.push(itemRecuperado);
             mostrarNotificacion('Se deshizo la eliminación', 'info');
+            renderizarListas();
             break;
         case 'toggleEnChango':
-            await callGAS('toggleEnChango', { id: ultima.id });
-            await cargarItems();
-            mostrarNotificacion('Se deshizo el cambio', 'info');
+            const itemToggle = itemsCache.find(i => i.id === ultima.id);
+            if (itemToggle) {
+                itemToggle.enChango = ultima.datos.enChango;
+                renderizarListas();
+                mostrarNotificacion('Se deshizo el cambio', 'info');
+            }
             break;
         case 'editar':
-            await callGAS('actualizarPrecioYCantidad', { id: ultima.id, cantidad: ultima.datos.cantidad, precioUnitario: ultima.datos.precioUnitario });
-            await cargarItems();
-            mostrarNotificacion('Se deshizo la edición', 'info');
+            const itemEdit = itemsCache.find(i => i.id === ultima.id);
+            if (itemEdit) {
+                itemEdit.cantidad = ultima.datos.cantidad;
+                itemEdit.precioUnitario = ultima.datos.precioUnitario;
+                renderizarListas();
+                mostrarNotificacion('Se deshizo la edición', 'info');
+            }
             break;
     }
 }
@@ -424,14 +456,31 @@ function actualizarBotonDeshacer() {
     if (btn) btn.disabled = historialAcciones.length === 0;
 }
 
+// =====================================================
+// UTILIDADES
+// =====================================================
+
 function mostrarNotificacion(mensaje, tipo = 'info') {
     const notif = document.createElement('div');
-    const colores = { success: '#10b981', error: '#ef4444', info: '#4f46e5' };
+    const colores = { success: '#10b981', error: '#ef4444', info: '#4f46e5', warning: '#f59e0b' };
     notif.className = `notification notification-${tipo}`;
     notif.innerText = mensaje;
-    notif.style.cssText = `position:fixed; bottom:20px; right:20px; padding:12px 20px; background:${colores[tipo] || '#4f46e5'}; color:white; border-radius:8px; z-index:2000; animation:slideIn 0.3s ease;`;
+    notif.style.cssText = `
+        position:fixed; 
+        bottom:20px; 
+        right:20px; 
+        padding:12px 20px; 
+        background:${colores[tipo] || '#4f46e5'}; 
+        color:white; 
+        border-radius:8px; 
+        z-index:2000; 
+        animation:slideIn 0.3s ease; 
+        max-width:90%;
+        font-size:0.9rem;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    `;
     document.body.appendChild(notif);
-    setTimeout(() => notif.remove(), 3000);
+    setTimeout(() => notif.remove(), 4000);
 }
 
 function escapeHtml(text) {
@@ -441,65 +490,46 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
-function showLoginScreen() {
-    document.getElementById('loginScreen').style.display = 'flex';
-    document.getElementById('appScreen').style.display = 'none';
-}
+// =====================================================
+// INICIALIZACIÓN
+// =====================================================
 
-function showAppScreen() {
-    document.getElementById('loginScreen').style.display = 'none';
-    document.getElementById('appScreen').style.display = 'block';
-}
+document.addEventListener('DOMContentLoaded', () => {
+    // Inicializar con algunos items de ejemplo
+    itemsCache = [
+        { id: generarId(), nombre: 'Leche', cantidad: 2, precioUnitario: null, enChango: false },
+        { id: generarId(), nombre: 'Pan', cantidad: 1, precioUnitario: 1200, enChango: false },
+        { id: generarId(), nombre: 'Huevos', cantidad: 12, precioUnitario: null, enChango: false }
+    ];
+    renderizarListas();
 
-document.addEventListener('DOMContentLoaded', async () => {
-    const loginForm = document.getElementById('loginForm');
-    const statusDiv = document.getElementById('login-status');
-
-    loginForm.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const email = document.getElementById('loginEmail').value.trim().toLowerCase();
-        if (!email) {
-            statusDiv.innerHTML = '<div class="error">❌ Ingresá un email válido</div>';
-            return;
-        }
-        statusDiv.innerHTML = '<div>⏳ Verificando acceso...</div>';
-        try {
-            const exito = await login(email);
-            if (exito) {
-                document.getElementById('userEmail').innerText = email;
-                await cargarItems();
-                showAppScreen();
-                statusDiv.innerHTML = '';
-                historialAcciones = [];
-                actualizarBotonDeshacer();
-            } else {
-                statusDiv.innerHTML = '<div class="error">❌ Acceso denegado. Email no autorizado</div>';
-            }
-        } catch (error) {
-            statusDiv.innerHTML = `<div class="error">❌ ${error.message}</div>`;
-        }
-    });
-
-    const autenticado = await checkAuth();
-    if (autenticado) {
-        document.getElementById('userEmail').innerText = currentUser;
-        await cargarItems();
-        showAppScreen();
-    } else {
-        showLoginScreen();
-    }
-
+    // Event listeners
     document.getElementById('btnAgregar')?.addEventListener('click', agregarItem);
     document.getElementById('item-input')?.addEventListener('keypress', (e) => { if (e.key === 'Enter') agregarItem(); });
-    document.getElementById('btnLogout')?.addEventListener('click', () => { logout(); showLoginScreen(); });
     document.getElementById('btnDeshacer')?.addEventListener('click', deshacer);
     document.getElementById('btnLimpiarSinPrecio')?.addEventListener('click', limpiarSinPrecio);
     document.getElementById('btnLimpiarConPrecio')?.addEventListener('click', limpiarConPrecio);
     document.getElementById('btnLimpiarChango')?.addEventListener('click', limpiarChango);
+    document.getElementById('btnLimpiarTodo')?.addEventListener('click', limpiarTodo);
+
+    // WhatsApp import
+    document.getElementById('btnToggleWhatsApp')?.addEventListener('click', () => toggleWhatsAppArea());
+    document.getElementById('btnProcesarWhatsApp')?.addEventListener('click', procesarWhatsApp);
+    document.getElementById('btnLimpiarWhatsApp')?.addEventListener('click', () => {
+        document.getElementById('whatsappText').value = '';
+        document.getElementById('whatsappCount').innerText = '0 items detectados';
+        mostrarNotificacion('Área de WhatsApp limpiada', 'info');
+    });
+
+    // Detección automática de cambios en el textarea
+    document.getElementById('whatsappText')?.addEventListener('input', function() {
+        const lineas = this.value.split('\n').filter(line => line.trim() !== '');
+        const itemsDetectados = lineas.length;
+        document.getElementById('whatsappCount').innerText = `${itemsDetectados} items detectados`;
+    });
 
     const modal = document.getElementById('modal');
     if (modal) {
         modal.addEventListener('click', (e) => { if (e.target === modal) modal.classList.remove('active'); });
     }
-
 });
