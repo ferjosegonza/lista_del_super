@@ -8,28 +8,30 @@
 </head>
 <body>
 
-    <div id="appScreen" class="app-container">
+    <div id="loginScreen" class="login-screen">
+        <div class="login-card">
+            <div class="login-icon">🛒</div>
+            <h1>Lista de Compras</h1>
+            <p>Gestión colaborativa del supermercado</p>
+            <div class="login-divider"></div>
+            <div id="login-status" class="login-status"></div>
+            <form id="loginForm" class="login-form">
+                <div class="form-group">
+                    <label>✉️ Tu correo electrónico</label>
+                    <input type="email" id="loginEmail" placeholder="tucorreo@gmail.com" required autofocus>
+                </div>
+                <button type="submit" class="btn-primary btn-large">Ingresar</button>
+            </form>
+            <p class="login-note">Solo usuarios autorizados pueden acceder</p>
+        </div>
+    </div>
+
+    <div id="appScreen" class="app-container" style="display: none;">
         <div class="app-header">
             <h1>🛒 Lista de Compras</h1>
             <div class="user-info">
-                <span class="text-muted">⚡ Modo local</span>
-                <button id="btnLimpiarTodo" class="btn-logout-sm btn-danger">🗑️ Limpiar todo</button>
-            </div>
-        </div>
-
-        <!-- Área de carga masiva de WhatsApp -->
-        <div class="whatsapp-import-section">
-            <div class="whatsapp-header">
-                <span>📱 <strong>Importar desde WhatsApp</strong></span>
-                <button id="btnToggleWhatsApp" class="btn-sm btn-primary" style="font-size:0.7rem;">▼ Mostrar</button>
-            </div>
-            <div id="whatsappArea" style="display: none;">
-                <textarea id="whatsappText" placeholder="Pegá acá los mensajes copiados de WhatsApp...&#10;&#10;Ejemplo:&#10;[11/7, 21:36] Lau Amor: Líquido para piso&#10;[11/7, 21:36] Lau Amor: Dulce de leche&#10;[11/7, 21:36] Lau Amor: Leche" rows="5"></textarea>
-                <div class="whatsapp-actions">
-                    <button id="btnProcesarWhatsApp" class="btn-success btn-sm">📥 Procesar mensajes</button>
-                    <button id="btnLimpiarWhatsApp" class="btn-secondary btn-sm">🗑️ Limpiar</button>
-                    <span id="whatsappCount" class="text-muted" style="font-size:0.75rem;">0 items detectados</span>
-                </div>
+                <span id="userEmail"></span>
+                <button id="btnLogout" class="btn-logout-sm">🚪 Salir</button>
             </div>
         </div>
 
@@ -94,6 +96,7 @@
         </div>
     </div>
 
+    <script src="config.js"></script>
     <script src="script.js"></script>
 </body>
 </html>
